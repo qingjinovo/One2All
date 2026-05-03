@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -13,30 +14,38 @@ import 'webrtc_service.dart';
 /// Callback for new messages
 typedef OnNewMessageCallback = void Function(Message message);
 
+/// Callback for file transfer progress (0.0 to 1.0)
+typedef OnFileProgressCallback = void Function(String messageId, double progress);
+
 /// Manages message sending, receiving, and history
 class MessageService {
   final WebRTCService _webRTCService;
   final String _deviceId;
   static const _uuid = Uuid();
   static const String _historyKey = 'message_history';
+  static const int _chunkSize = 64 * 1024; // 64KB per chunk
 
   final List<Message> _messages = [];
   final Map<String, List<Message>> _conversationMessages = {};
   String? _fileStoragePath;
 
+  // Chunked file transfer state (incoming)
+  final Map<String, _IncomingFileTransfer> _incomingFileTransfers = {};
+
   // Listener list (supports multiple listeners)
   final List<OnNewMessageCallback> _onNewMessageListeners = [];
+  final List<OnFileProgressCallback> _onFileProgressListeners = [];
 
   List<Message> get messages => List.unmodifiable(_messages);
 
   MessageService(this._webRTCService, this._deviceId) {
     _webRTCService.addMessageReceivedListener(_onMessageReceived);
+    _webRTCService.addBinaryMessageReceivedListener(_onBinaryMessageReceived);
     _initFileStorage();
   }
 
   Future<void> _initFileStorage() async {
     try {
-      // Check for custom path first
       final prefs = await SharedPreferences.getInstance();
       final customPath = prefs.getString('file_storage_path');
       if (customPath != null && customPath.isNotEmpty) {
@@ -61,6 +70,11 @@ class MessageService {
   void removeNewMessageListener(OnNewMessageCallback callback) =>
       _onNewMessageListeners.remove(callback);
 
+  void addFileProgressListener(OnFileProgressCallback callback) =>
+      _onFileProgressListeners.add(callback);
+  void removeFileProgressListener(OnFileProgressCallback callback) =>
+      _onFileProgressListeners.remove(callback);
+
   /// Get messages for a specific conversation (peer)
   List<Message> getConversation(String peerId) {
     return List.unmodifiable(_conversationMessages[peerId] ?? []);
@@ -78,10 +92,8 @@ class MessageService {
       status: MessageStatus.sending,
     );
 
-    // Add message with 'sending' status first
     _addMessage(message);
 
-    // Send via WebRTC data channel
     final payload = jsonEncode({
       'type': 'message',
       'message': message.toJson(),
@@ -89,7 +101,6 @@ class MessageService {
 
     final sent = await _webRTCService.sendMessage(peerId, payload);
 
-    // Update status
     final updatedMessage = message.copyWith(
       status: sent ? MessageStatus.sent : MessageStatus.failed,
     );
@@ -134,21 +145,25 @@ class MessageService {
     return true;
   }
 
-  /// Send a file to a peer
+  /// Send a file to a peer using chunked binary transfer
   Future<bool> sendFile(String peerId, String filePath, {
     String? fileName,
     String? mimeType,
+    OnFileProgressCallback? onProgress,
   }) async {
+    final name = fileName ?? filePath.split(Platform.pathSeparator).last;
+    final mime = mimeType ?? _guessMimeType(name);
+    final messageId = _uuid.v4();
+
     try {
       final file = File(filePath);
-      final bytes = await file.readAsBytes();
-      final name = fileName ?? filePath.split(Platform.pathSeparator).last;
-      final mime = mimeType ?? _guessMimeType(name);
-      final messageId = _uuid.v4();
+      final fileBytes = await file.readAsBytes();
+      final totalSize = fileBytes.length;
 
-      // Save file data to disk
-      final savedPath = await _saveFileToDisk(messageId, bytes);
+      // Save file to local disk for persistence
+      final savedPath = await _saveFileToDisk(messageId, fileBytes);
 
+      // Create message with sending status
       final message = Message(
         id: messageId,
         senderId: _deviceId,
@@ -157,33 +172,89 @@ class MessageService {
         type: MessageType.file,
         timestamp: DateTime.now(),
         fileName: name,
-        fileSize: bytes.length,
+        fileSize: totalSize,
         mimeType: mime,
-        fileData: base64Encode(bytes), // for sending over network
-        filePath: savedPath, // for local persistence
+        filePath: savedPath,
+        status: MessageStatus.sending,
       );
+      _addMessage(message);
 
-      // Send file data over network (with base64 for small files)
-      final payload = jsonEncode({
-        'type': 'file',
-        'message': message.toJson(),
+      // Send file_start control message (metadata only, no file data)
+      final startPayload = jsonEncode({
+        'type': 'file_start',
+        'messageId': messageId,
+        'fileName': name,
+        'fileSize': totalSize,
+        'mimeType': mime,
+        'senderId': _deviceId,
+        'receiverId': peerId,
       });
 
-      final sent = await _webRTCService.sendMessage(peerId, payload);
-      if (!sent) {
-        debugPrint('[Message] Failed to send file to $peerId');
+      final started = await _webRTCService.sendMessage(peerId, startPayload);
+      if (!started) {
+        _updateMessage(messageId, message.copyWith(status: MessageStatus.failed));
+        await _saveHistory();
+        debugPrint('[Message] Failed to start file transfer to $peerId');
         return false;
       }
 
-      // Store message WITHOUT fileData (file is on disk)
-      final storedMessage = message.copyWith(fileData: null);
-      _addMessage(storedMessage);
+      // Send file in chunks
+      int offset = 0;
+      while (offset < totalSize) {
+        final end = (offset + _chunkSize < totalSize) ? offset + _chunkSize : totalSize;
+        final chunk = Uint8List.sublistView(fileBytes, offset, end);
+
+        // Prepend 4-byte messageId length + messageId bytes for identification
+        final msgIdBytes = utf8.encode(messageId);
+        final header = ByteData(4)..setUint32(0, msgIdBytes.length);
+        final binaryChunk = Uint8List(4 + msgIdBytes.length + chunk.length);
+        binaryChunk.setAll(0, header.buffer.asUint8List());
+        binaryChunk.setAll(4, msgIdBytes);
+        binaryChunk.setAll(4 + msgIdBytes.length, chunk);
+
+        final sent = await _webRTCService.sendBinary(peerId, binaryChunk);
+        if (!sent) {
+          _updateMessage(messageId, message.copyWith(status: MessageStatus.failed));
+          await _saveHistory();
+          debugPrint('[Message] Failed to send chunk at offset $offset');
+          return false;
+        }
+
+        offset = end;
+        final progress = offset / totalSize;
+        if (onProgress != null) onProgress(messageId, progress);
+        for (final listener in _onFileProgressListeners) {
+          listener(messageId, progress);
+        }
+      }
+
+      // Send file_end control message
+      final endPayload = jsonEncode({
+        'type': 'file_end',
+        'messageId': messageId,
+      });
+      await _webRTCService.sendMessage(peerId, endPayload);
+
+      // Update message status to sent
+      _updateMessage(messageId, message.copyWith(status: MessageStatus.sent));
       await _saveHistory();
 
-      debugPrint('[Message] File "$name" (${bytes.length} bytes) sent to $peerId');
+      debugPrint('[Message] File "$name" ($totalSize bytes) sent to $peerId');
       return true;
     } catch (e) {
       debugPrint('[Message] Error sending file: $e');
+      _updateMessage(messageId, Message(
+        id: messageId,
+        senderId: _deviceId,
+        receiverId: peerId,
+        content: name,
+        type: MessageType.file,
+        timestamp: DateTime.now(),
+        fileName: name,
+        mimeType: mime,
+        status: MessageStatus.failed,
+      ));
+      await _saveHistory();
       return false;
     }
   }
@@ -330,26 +401,103 @@ class MessageService {
       final json = jsonDecode(data) as Map<String, dynamic>;
       final type = json['type'] as String?;
 
-      if (type == 'message' || type == 'clipboard' || type == 'file') {
+      if (type == 'message' || type == 'clipboard') {
         final messageJson = json['message'] as Map<String, dynamic>;
         final message = Message.fromJson(messageJson);
-
-        if (type == 'file' && message.fileData != null) {
-          // Save received file data to disk, then store message without fileData
-          _saveFileToDisk(message.id, base64Decode(message.fileData!)).then((savedPath) {
-            final storedMessage = message.copyWith(fileData: null, filePath: savedPath);
-            _addMessage(storedMessage);
-            _saveHistory();
-          });
-        } else {
-          _addMessage(message);
-          _saveHistory();
-        }
-
+        _addMessage(message);
+        _saveHistory();
         debugPrint('[Message] Received from $peerId: ${message.content}');
+      } else if (type == 'file_start') {
+        _handleFileStart(json);
+      } else if (type == 'file_end') {
+        _handleFileEnd(json);
       }
     } catch (e) {
       debugPrint('[Message] Error parsing message from $peerId: $e');
+    }
+  }
+
+  void _onBinaryMessageReceived(String peerId, Uint8List data) {
+    try {
+      if (data.length < 4) return;
+
+      // Extract messageId from binary header
+      final msgIdLen = ByteData.sublistView(data, 0, 4).getUint32(0);
+      if (data.length < 4 + msgIdLen) return;
+
+      final messageId = utf8.decode(data.sublist(4, 4 + msgIdLen));
+      final chunk = data.sublist(4 + msgIdLen);
+
+      final transfer = _incomingFileTransfers[messageId];
+      if (transfer == null) {
+        debugPrint('[Message] Received chunk for unknown transfer: $messageId');
+        return;
+      }
+
+      transfer.bytesBuilder.add(chunk);
+      transfer.receivedBytes += chunk.length;
+
+      // Notify progress
+      final progress = transfer.receivedBytes / transfer.totalSize;
+      for (final listener in _onFileProgressListeners) {
+        listener(messageId, progress);
+      }
+    } catch (e) {
+      debugPrint('[Message] Error processing binary chunk: $e');
+    }
+  }
+
+  void _handleFileStart(Map<String, dynamic> json) {
+    final messageId = json['messageId'] as String;
+    final fileName = json['fileName'] as String;
+    final fileSize = json['fileSize'] as int;
+    final mimeType = json['mimeType'] as String;
+    final senderId = json['senderId'] as String;
+    final receiverId = json['receiverId'] as String;
+
+    debugPrint('[Message] File transfer started: $fileName ($fileSize bytes)');
+
+    _incomingFileTransfers[messageId] = _IncomingFileTransfer(
+      messageId: messageId,
+      fileName: fileName,
+      totalSize: fileSize,
+      mimeType: mimeType,
+      senderId: senderId,
+      receiverId: receiverId,
+    );
+  }
+
+  Future<void> _handleFileEnd(Map<String, dynamic> json) async {
+    final messageId = json['messageId'] as String;
+    final transfer = _incomingFileTransfers.remove(messageId);
+
+    if (transfer == null) {
+      debugPrint('[Message] file_end for unknown transfer: $messageId');
+      return;
+    }
+
+    try {
+      final fileBytes = transfer.bytesBuilder.toBytes();
+      final savedPath = await _saveFileToDisk(messageId, fileBytes);
+
+      final message = Message(
+        id: messageId,
+        senderId: transfer.senderId,
+        receiverId: transfer.receiverId,
+        content: transfer.fileName,
+        type: MessageType.file,
+        timestamp: DateTime.now(),
+        fileName: transfer.fileName,
+        fileSize: transfer.totalSize,
+        mimeType: transfer.mimeType,
+        filePath: savedPath,
+      );
+
+      _addMessage(message);
+      await _saveHistory();
+      debugPrint('[Message] File "${transfer.fileName}" received and saved');
+    } catch (e) {
+      debugPrint('[Message] Error saving received file: $e');
     }
   }
 
@@ -382,7 +530,6 @@ class MessageService {
           conv[convIndex] = updatedMessage;
         }
       }
-      // Notify listeners to refresh UI
       for (final listener in _onNewMessageListeners) {
         listener(updatedMessage);
       }
@@ -401,5 +548,27 @@ class MessageService {
 
   void dispose() {
     _webRTCService.removeMessageReceivedListener(_onMessageReceived);
+    _webRTCService.removeBinaryMessageReceivedListener(_onBinaryMessageReceived);
   }
+}
+
+/// Internal state for an incoming file transfer
+class _IncomingFileTransfer {
+  final String messageId;
+  final String fileName;
+  final int totalSize;
+  final String mimeType;
+  final String senderId;
+  final String receiverId;
+  final BytesBuilder bytesBuilder = BytesBuilder();
+  int receivedBytes = 0;
+
+  _IncomingFileTransfer({
+    required this.messageId,
+    required this.fileName,
+    required this.totalSize,
+    required this.mimeType,
+    required this.senderId,
+    required this.receiverId,
+  });
 }

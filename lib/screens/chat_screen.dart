@@ -22,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<Message> _messages = [];
+  final Map<String, double> _fileProgress = {};
   bool _isConnected = false;
 
   late final WebRTCService _webRTC;
@@ -37,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _webRTC.addPeerConnectionChangedListener(_onPeerConnectionChanged);
     _messageService.addNewMessageListener(_onNewMessage);
+    _messageService.addFileProgressListener(_onFileProgress);
 
     _loadMessages();
   }
@@ -47,11 +49,24 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _onFileProgress(String messageId, double progress) {
+    if (mounted) {
+      setState(() => _fileProgress[messageId] = progress);
+    }
+  }
+
   void _onNewMessage(Message message) {
     if ((message.senderId == widget.device.id ||
             message.receiverId == widget.device.id) &&
         mounted) {
-      setState(() => _messages.add(message));
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == message.id);
+        if (index >= 0) {
+          _messages[index] = message;
+        } else {
+          _messages.add(message);
+        }
+      });
       _scrollToBottom();
     }
   }
@@ -143,6 +158,7 @@ class _ChatScreenState extends State<ChatScreen> {
         return MessageBubble(
           message: message,
           isMe: isMe,
+          fileProgress: _fileProgress[message.id],
         );
       },
     );
@@ -323,6 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _webRTC.removePeerConnectionChangedListener(_onPeerConnectionChanged);
     _messageService.removeNewMessageListener(_onNewMessage);
+    _messageService.removeFileProgressListener(_onFileProgress);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();

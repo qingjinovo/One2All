@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_localizations.dart';
 import '../models/device.dart';
@@ -22,11 +23,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final List<Device> _devices = [];
   bool _isConnected = false;
+  String _deviceId = '';
 
   @override
   void initState() {
     super.initState();
+    _loadDeviceId();
     _setupCallbacks();
+  }
+
+  Future<void> _loadDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _deviceId = prefs.getString('device_id') ?? '');
   }
 
   void _setupCallbacks() {
@@ -49,17 +57,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       setState(() {
         _devices.clear();
-        // Default to offline - will be updated to online when WebRTC connects
-        _devices.addAll(devices.map((d) => d.copyWith(status: DeviceStatus.offline)));
+        // Filter out own device and default to offline
+        _devices.addAll(devices
+            .where((d) => d.id != _deviceId)
+            .map((d) => d.copyWith(status: DeviceStatus.offline)));
       });
     }
   }
 
   void _onDeviceOnline(Device device) {
     if (mounted) {
+      if (device.id == _deviceId) return; // Skip own device
       setState(() {
         _devices.removeWhere((d) => d.id == device.id);
-        // Default to offline - will be updated to online when WebRTC connects
         _devices.add(device.copyWith(status: DeviceStatus.offline));
       });
     }

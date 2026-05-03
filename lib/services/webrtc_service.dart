@@ -9,6 +9,7 @@ import 'signaling_service.dart';
 /// Callback types for WebRTC events
 typedef OnDataChannelCallback = void Function(String peerId, RTCDataChannel channel);
 typedef OnMessageCallback = void Function(String peerId, String message);
+typedef OnBinaryMessageCallback = void Function(String peerId, Uint8List data);
 typedef OnPeerConnectionCallback = void Function(String peerId, bool connected);
 
 /// Manages WebRTC peer connections and data channels
@@ -20,6 +21,7 @@ class WebRTCService {
   // Listener lists (supports multiple listeners)
   final List<OnDataChannelCallback> _onDataChannelOpenListeners = [];
   final List<OnMessageCallback> _onMessageReceivedListeners = [];
+  final List<OnBinaryMessageCallback> _onBinaryMessageReceivedListeners = [];
   final List<OnPeerConnectionCallback> _onPeerConnectionChangedListeners = [];
 
   static const Map<String, dynamic> _iceServers = {
@@ -48,6 +50,11 @@ class WebRTCService {
       _onMessageReceivedListeners.add(callback);
   void removeMessageReceivedListener(OnMessageCallback callback) =>
       _onMessageReceivedListeners.remove(callback);
+
+  void addBinaryMessageReceivedListener(OnBinaryMessageCallback callback) =>
+      _onBinaryMessageReceivedListeners.add(callback);
+  void removeBinaryMessageReceivedListener(OnBinaryMessageCallback callback) =>
+      _onBinaryMessageReceivedListeners.remove(callback);
 
   void addPeerConnectionChangedListener(OnPeerConnectionCallback callback) =>
       _onPeerConnectionChangedListeners.add(callback);
@@ -113,7 +120,7 @@ class WebRTCService {
     }
   }
 
-  /// Send a message to a peer via data channel
+  /// Send a text message to a peer via data channel
   Future<bool> sendMessage(String peerId, String message) async {
     final dc = _dataChannels[peerId];
     if (dc == null) {
@@ -126,6 +133,20 @@ class WebRTCService {
       return true;
     } catch (e) {
       debugPrint('[WebRTC] Send error to $peerId: $e');
+      return false;
+    }
+  }
+
+  /// Send binary data to a peer via data channel
+  Future<bool> sendBinary(String peerId, Uint8List data) async {
+    final dc = _dataChannels[peerId];
+    if (dc == null) return false;
+
+    try {
+      await dc.send(RTCDataChannelMessage.fromBinary(data));
+      return true;
+    } catch (e) {
+      debugPrint('[WebRTC] Binary send error to $peerId: $e');
       return false;
     }
   }
@@ -275,8 +296,9 @@ class WebRTCService {
 
     channel.onMessage = (message) {
       if (message.isBinary) {
-        debugPrint('[WebRTC] Received binary message from $peerId');
-        // Handle binary data (file chunks) later
+        for (final listener in _onBinaryMessageReceivedListeners) {
+          listener(peerId, message.binary);
+        }
       } else {
         for (final listener in _onMessageReceivedListeners) {
           listener(peerId, message.text);
@@ -304,6 +326,7 @@ class WebRTCService {
     }
     _peerConnections.clear();
     _dataChannels.clear();
+    _onBinaryMessageReceivedListeners.clear();
     _signalingService.removeSignalListener(_handleSignal);
   }
 }

@@ -12,11 +12,13 @@ import '../services/message_service.dart';
 class MessageBubble extends StatefulWidget {
   final Message message;
   final bool isMe;
+  final double? fileProgress;
 
   const MessageBubble({
     super.key,
     required this.message,
     required this.isMe,
+    this.fileProgress,
   });
 
   @override
@@ -240,6 +242,9 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   Widget _buildFileMessage(BuildContext context) {
     final message = widget.message;
+    final progress = widget.fileProgress;
+    final isTransferring = message.status == MessageStatus.sending && progress != null;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -271,7 +276,28 @@ class _MessageBubbleState extends State<MessageBubble> {
                     fontSize: 12,
                   ),
                 ),
-              if (widget.isMe) ...[
+              if (isTransferring) ...[
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: (widget.isMe ? Colors.white : Colors.grey).withValues(alpha: 0.3),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      widget.isMe ? Colors.white : Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${(progress * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    color: _getTextColor(context).withValues(alpha: 0.7),
+                    fontSize: 11,
+                  ),
+                ),
+              ] else if (widget.isMe) ...[
                 const SizedBox(height: 2),
                 _buildStatusIcon(context),
               ],
