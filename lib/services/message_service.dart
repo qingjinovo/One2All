@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -20,6 +22,7 @@ class MessageService {
 
   final List<Message> _messages = [];
   final Map<String, List<Message>> _conversationMessages = {};
+  String? _fileStoragePath;
 
   // Listener list (supports multiple listeners)
   final List<OnNewMessageCallback> _onNewMessageListeners = [];
@@ -28,6 +31,28 @@ class MessageService {
 
   MessageService(this._webRTCService, this._deviceId) {
     _webRTCService.addMessageReceivedListener(_onMessageReceived);
+    _initFileStorage();
+  }
+
+  Future<void> _initFileStorage() async {
+    try {
+      // Check for custom path first
+      final prefs = await SharedPreferences.getInstance();
+      final customPath = prefs.getString('file_storage_path');
+      if (customPath != null && customPath.isNotEmpty) {
+        _fileStoragePath = customPath;
+      } else {
+        final dir = await getApplicationDocumentsDirectory();
+        _fileStoragePath = '${dir.path}${Platform.pathSeparator}One2All${Platform.pathSeparator}files';
+      }
+      final dir2 = Directory(_fileStoragePath!);
+      if (!await dir2.exists()) {
+        await dir2.create(recursive: true);
+      }
+      debugPrint('[Message] File storage: $_fileStoragePath');
+    } catch (e) {
+      debugPrint('[Message] Error init file storage: $e');
+    }
   }
 
   // Add/Remove listener methods
@@ -50,7 +75,11 @@ class MessageService {
       content: content,
       type: MessageType.text,
       timestamp: DateTime.now(),
+      status: MessageStatus.sending,
     );
+
+    // Add message with 'sending' status first
+    _addMessage(message);
 
     // Send via WebRTC data channel
     final payload = jsonEncode({
@@ -59,14 +88,18 @@ class MessageService {
     });
 
     final sent = await _webRTCService.sendMessage(peerId, payload);
+
+    // Update status
+    final updatedMessage = message.copyWith(
+      status: sent ? MessageStatus.sent : MessageStatus.failed,
+    );
+    _updateMessage(message.id, updatedMessage);
+    await _saveHistory();
+
     if (!sent) {
       debugPrint('[Message] Failed to send to $peerId');
       return false;
     }
-
-    // Store locally
-    _addMessage(message);
-    await _saveHistory();
 
     debugPrint('[Message] Sent to $peerId: $content');
     return true;
@@ -111,9 +144,13 @@ class MessageService {
       final bytes = await file.readAsBytes();
       final name = fileName ?? filePath.split(Platform.pathSeparator).last;
       final mime = mimeType ?? _guessMimeType(name);
+      final messageId = _uuid.v4();
+
+      // Save file data to disk
+      final savedPath = await _saveFileToDisk(messageId, bytes);
 
       final message = Message(
-        id: _uuid.v4(),
+        id: messageId,
         senderId: _deviceId,
         receiverId: peerId,
         content: name,
@@ -122,9 +159,11 @@ class MessageService {
         fileName: name,
         fileSize: bytes.length,
         mimeType: mime,
-        fileData: base64Encode(bytes),
+        fileData: base64Encode(bytes), // for sending over network
+        filePath: savedPath, // for local persistence
       );
 
+      // Send file data over network (with base64 for small files)
       final payload = jsonEncode({
         'type': 'file',
         'message': message.toJson(),
@@ -136,7 +175,9 @@ class MessageService {
         return false;
       }
 
-      _addMessage(message);
+      // Store message WITHOUT fileData (file is on disk)
+      final storedMessage = message.copyWith(fileData: null);
+      _addMessage(storedMessage);
       await _saveHistory();
 
       debugPrint('[Message] File "$name" (${bytes.length} bytes) sent to $peerId');
@@ -144,6 +185,75 @@ class MessageService {
     } catch (e) {
       debugPrint('[Message] Error sending file: $e');
       return false;
+    }
+  }
+
+  /// Save file bytes to disk and return the path
+  Future<String> _saveFileToDisk(String messageId, List<int> bytes) async {
+    if (_fileStoragePath == null) {
+      await _initFileStorage();
+    }
+    final path = '$_fileStoragePath${Platform.pathSeparator}$messageId';
+    await File(path).writeAsBytes(bytes);
+    return path;
+  }
+
+  /// Load file data from disk for a message
+  Future<Uint8List?> loadFileData(String messageId) async {
+    try {
+      if (_fileStoragePath == null) return null;
+      final path = '$_fileStoragePath${Platform.pathSeparator}$messageId';
+      final file = File(path);
+      if (await file.exists()) {
+        return await file.readAsBytes();
+      }
+    } catch (e) {
+      debugPrint('[Message] Error loading file data: $e');
+    }
+    return null;
+  }
+
+  /// Save file bytes to a user-chosen location
+  Future<String> saveFileToCustomLocation(Uint8List bytes, String fileName) async {
+    final outputPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save File',
+      fileName: fileName,
+    );
+
+    if (outputPath == null) throw Exception('User cancelled save');
+
+    await File(outputPath).writeAsBytes(bytes);
+    return outputPath;
+  }
+
+  /// Get the file storage directory path
+  String? get fileStoragePath => _fileStoragePath;
+
+  /// Update file storage path
+  Future<void> setFileStoragePath(String path) async {
+    _fileStoragePath = path;
+    final dir = Directory(path);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('file_storage_path', path);
+  }
+
+  /// Load custom file storage path from preferences
+  Future<void> loadCustomStoragePath() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final customPath = prefs.getString('file_storage_path');
+      if (customPath != null && customPath.isNotEmpty) {
+        _fileStoragePath = customPath;
+        final dir = Directory(customPath);
+        if (!await dir.exists()) {
+          await dir.create(recursive: true);
+        }
+      }
+    } catch (e) {
+      debugPrint('[Message] Error loading custom storage path: $e');
     }
   }
 
@@ -223,8 +333,19 @@ class MessageService {
       if (type == 'message' || type == 'clipboard' || type == 'file') {
         final messageJson = json['message'] as Map<String, dynamic>;
         final message = Message.fromJson(messageJson);
-        _addMessage(message);
-        _saveHistory();
+
+        if (type == 'file' && message.fileData != null) {
+          // Save received file data to disk, then store message without fileData
+          _saveFileToDisk(message.id, base64Decode(message.fileData!)).then((savedPath) {
+            final storedMessage = message.copyWith(fileData: null, filePath: savedPath);
+            _addMessage(storedMessage);
+            _saveHistory();
+          });
+        } else {
+          _addMessage(message);
+          _saveHistory();
+        }
+
         debugPrint('[Message] Received from $peerId: ${message.content}');
       }
     } catch (e) {
@@ -243,6 +364,27 @@ class MessageService {
     if (notify) {
       for (final listener in _onNewMessageListeners) {
         listener(message);
+      }
+    }
+  }
+
+  void _updateMessage(String messageId, Message updatedMessage) {
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index >= 0) {
+      _messages[index] = updatedMessage;
+      final peerId = updatedMessage.senderId == _deviceId
+          ? updatedMessage.receiverId
+          : updatedMessage.senderId;
+      final conv = _conversationMessages[peerId];
+      if (conv != null) {
+        final convIndex = conv.indexWhere((m) => m.id == messageId);
+        if (convIndex >= 0) {
+          conv[convIndex] = updatedMessage;
+        }
+      }
+      // Notify listeners to refresh UI
+      for (final listener in _onNewMessageListeners) {
+        listener(updatedMessage);
       }
     }
   }

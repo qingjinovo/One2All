@@ -254,4 +254,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String deviceStatusLabel(String deviceStatus) {
     return 'Status: $deviceStatus';
   }
+
+  @override
+  String get saveImage => 'Save Image';
+
+  @override
+  String fileSavedTo(String path) {
+    return 'File saved to $path';
+  }
+
+  @override
+  String get fileStorageLocation => 'File Storage Location';
+
+  @override
+  String get fileStorageHelper =>
+      'Path where received files and images are saved';
+
+  @override
+  String get changeLocation => 'Change';
+
+  @override
+  String get selectFolder => 'Select Folder';
 }

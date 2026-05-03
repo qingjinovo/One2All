@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 enum MessageType { text, clipboard, file, system }
+enum MessageStatus { sending, sent, failed }
 
 class Message {
   final String id;
@@ -13,7 +14,9 @@ class Message {
   final String? fileName;
   final int? fileSize;
   final String? mimeType;
-  final String? fileData; // base64 encoded file data
+  final String? fileData; // base64 encoded file data (transient, not persisted)
+  final String? filePath; // local file path on disk (persisted)
+  final MessageStatus status; // send status
 
   Message({
     required this.id,
@@ -27,6 +30,8 @@ class Message {
     this.fileSize,
     this.mimeType,
     this.fileData,
+    this.filePath,
+    this.status = MessageStatus.sent,
   }) : timestamp = timestamp ?? DateTime(0);
 
   bool get isImage => mimeType?.startsWith('image/') ?? false;
@@ -43,6 +48,8 @@ class Message {
     int? fileSize,
     String? mimeType,
     String? fileData,
+    String? filePath,
+    MessageStatus? status,
   }) {
     return Message(
       id: id ?? this.id,
@@ -56,6 +63,8 @@ class Message {
       fileSize: fileSize ?? this.fileSize,
       mimeType: mimeType ?? this.mimeType,
       fileData: fileData ?? this.fileData,
+      filePath: filePath ?? this.filePath,
+      status: status ?? this.status,
     );
   }
 
@@ -67,10 +76,12 @@ class Message {
         'type': type.name,
         'timestamp': timestamp.toIso8601String(),
         'isRead': isRead,
+        'status': status.name,
         if (fileName != null) 'fileName': fileName,
         if (fileSize != null) 'fileSize': fileSize,
         if (mimeType != null) 'mimeType': mimeType,
         if (fileData != null) 'fileData': fileData,
+        if (filePath != null) 'filePath': filePath,
       };
 
   factory Message.fromJson(Map<String, dynamic> json) => Message(
@@ -81,10 +92,14 @@ class Message {
         type: MessageType.values.byName(json['type'] as String),
         timestamp: DateTime.parse(json['timestamp'] as String),
         isRead: json['isRead'] as bool? ?? false,
+        status: json['status'] != null
+            ? MessageStatus.values.byName(json['status'] as String)
+            : MessageStatus.sent,
         fileName: json['fileName'] as String?,
         fileSize: json['fileSize'] as int?,
         mimeType: json['mimeType'] as String?,
         fileData: json['fileData'] as String?,
+        filePath: json['filePath'] as String?,
       );
 
   String toJsonString() => jsonEncode(toJson());

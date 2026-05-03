@@ -250,4 +250,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String deviceStatusLabel(String deviceStatus) {
     return '状态: $deviceStatus';
   }
+
+  @override
+  String get saveImage => '保存图片';
+
+  @override
+  String fileSavedTo(String path) {
+    return '文件已保存到 $path';
+  }
+
+  @override
+  String get fileStorageLocation => '文件存储位置';
+
+  @override
+  String get fileStorageHelper => '接收的文件和图片保存路径';
+
+  @override
+  String get changeLocation => '更改';
+
+  @override
+  String get selectFolder => '选择文件夹';
 }

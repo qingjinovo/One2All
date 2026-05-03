@@ -170,5 +170,20 @@
   "@deviceStatusLabel": {
     "description": "Device info label",
     "placeholders": { "deviceStatus": { "type": "String" } }
-  }
+  },
+  "saveImage": "Save Image",
+  "@saveImage": { "description": "Save image button tooltip" },
+  "fileSavedTo": "File saved to {path}",
+  "@fileSavedTo": {
+    "description": "SnackBar after saving file",
+    "placeholders": { "path": { "type": "String" } }
+  },
+  "fileStorageLocation": "File Storage Location",
+  "@fileStorageLocation": { "description": "Settings label" },
+  "fileStorageHelper": "Path where received files and images are saved",
+  "@fileStorageHelper": { "description": "Settings helper text" },
+  "changeLocation": "Change",
+  "@changeLocation": { "description": "Change location button" },
+  "selectFolder": "Select Folder",
+  "@selectFolder": { "description": "Folder picker title" }
 }

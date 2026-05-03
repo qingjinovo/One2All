@@ -37,7 +37,8 @@ Future<void> main() async {
   final messageService = MessageService(webRTCService, deviceId);
   final clipboardService = ClipboardService(messageService, deviceId);
 
-  // Load message history
+  // Load custom storage path and message history
+  await messageService.loadCustomStoragePath();
   await messageService.loadHistory();
 
   // Enable clipboard sync if configured

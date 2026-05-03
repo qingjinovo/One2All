@@ -547,6 +547,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Status: {deviceStatus}'**
   String deviceStatusLabel(String deviceStatus);
+
+  /// Save image button tooltip
+  ///
+  /// In en, this message translates to:
+  /// **'Save Image'**
+  String get saveImage;
+
+  /// SnackBar after saving file
+  ///
+  /// In en, this message translates to:
+  /// **'File saved to {path}'**
+  String fileSavedTo(String path);
+
+  /// Settings label
+  ///
+  /// In en, this message translates to:
+  /// **'File Storage Location'**
+  String get fileStorageLocation;
+
+  /// Settings helper text
+  ///
+  /// In en, this message translates to:
+  /// **'Path where received files and images are saved'**
+  String get fileStorageHelper;
+
+  /// Change location button
+  ///
+  /// In en, this message translates to:
+  /// **'Change'**
+  String get changeLocation;
+
+  /// Folder picker title
+  ///
+  /// In en, this message translates to:
+  /// **'Select Folder'**
+  String get selectFolder;
 }
 
 class _AppLocalizationsDelegate

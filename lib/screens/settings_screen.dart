@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/app_localizations.dart';
 import '../main.dart';
 import '../services/clipboard_service.dart';
+import '../services/message_service.dart';
 import '../services/signaling_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _clipboardSync = false;
   bool _autoConnect = true;
   String _languageCode = 'zh';
+  String _fileStoragePath = '';
 
   @override
   void initState() {
@@ -36,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _clipboardSync = prefs.getBool('clipboard_sync') ?? false;
       _autoConnect = prefs.getBool('auto_connect') ?? true;
       _languageCode = prefs.getString('language_code') ?? 'zh';
+      _fileStoragePath = prefs.getString('file_storage_path') ?? '';
     });
   }
 
@@ -46,6 +50,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('clipboard_sync', _clipboardSync);
     await prefs.setBool('auto_connect', _autoConnect);
     await prefs.setString('language_code', _languageCode);
+    if (_fileStoragePath.isNotEmpty) {
+      await prefs.setString('file_storage_path', _fileStoragePath);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context)!.settingsSaved)),
+      );
+    }
+  }
+
+  Future<void> _pickFileStoragePath() async {
+    final selectedPath = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select Folder',
+    );
+    if (selectedPath == null) return;
+
+    setState(() => _fileStoragePath = selectedPath);
+    if (!mounted) return;
+    final messageService = context.read<MessageService>();
+    await messageService.setFileStoragePath(selectedPath);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,12 +181,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 24),
           _buildSection(
+            title: l10n.fileStorageLocation,
+            icon: Icons.folder,
+            children: [
+              Text(
+                _fileStoragePath.isEmpty ? 'Default' : _fileStoragePath,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.fileStorageHelper,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.folder_open),
+                  label: Text(l10n.changeLocation),
+                  onPressed: _pickFileStoragePath,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          _buildSection(
             title: l10n.about,
             icon: Icons.info,
             children: [
               ListTile(
                 title: const Text('One2All'),
-                subtitle: Text(l10n.version('1.0.0')),
+                subtitle: Text(l10n.version('1.2.0')),
               ),
               ListTile(
                 title: Text(l10n.description),
