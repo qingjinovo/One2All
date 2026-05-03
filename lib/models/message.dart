@@ -10,6 +10,10 @@ class Message {
   final MessageType type;
   final DateTime timestamp;
   final bool isRead;
+  final String? fileName;
+  final int? fileSize;
+  final String? mimeType;
+  final String? fileData; // base64 encoded file data
 
   Message({
     required this.id,
@@ -19,7 +23,13 @@ class Message {
     this.type = MessageType.text,
     DateTime? timestamp,
     this.isRead = false,
+    this.fileName,
+    this.fileSize,
+    this.mimeType,
+    this.fileData,
   }) : timestamp = timestamp ?? DateTime(0);
+
+  bool get isImage => mimeType?.startsWith('image/') ?? false;
 
   Message copyWith({
     String? id,
@@ -29,6 +39,10 @@ class Message {
     MessageType? type,
     DateTime? timestamp,
     bool? isRead,
+    String? fileName,
+    int? fileSize,
+    String? mimeType,
+    String? fileData,
   }) {
     return Message(
       id: id ?? this.id,
@@ -38,6 +52,10 @@ class Message {
       type: type ?? this.type,
       timestamp: timestamp ?? this.timestamp,
       isRead: isRead ?? this.isRead,
+      fileName: fileName ?? this.fileName,
+      fileSize: fileSize ?? this.fileSize,
+      mimeType: mimeType ?? this.mimeType,
+      fileData: fileData ?? this.fileData,
     );
   }
 
@@ -49,6 +67,10 @@ class Message {
         'type': type.name,
         'timestamp': timestamp.toIso8601String(),
         'isRead': isRead,
+        if (fileName != null) 'fileName': fileName,
+        if (fileSize != null) 'fileSize': fileSize,
+        if (mimeType != null) 'mimeType': mimeType,
+        if (fileData != null) 'fileData': fileData,
       };
 
   factory Message.fromJson(Map<String, dynamic> json) => Message(
@@ -59,6 +81,10 @@ class Message {
         type: MessageType.values.byName(json['type'] as String),
         timestamp: DateTime.parse(json['timestamp'] as String),
         isRead: json['isRead'] as bool? ?? false,
+        fileName: json['fileName'] as String?,
+        fileSize: json['fileSize'] as int?,
+        mimeType: json['mimeType'] as String?,
+        fileData: json['fileData'] as String?,
       );
 
   String toJsonString() => jsonEncode(toJson());

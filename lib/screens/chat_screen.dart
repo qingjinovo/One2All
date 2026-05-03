@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -209,10 +210,38 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.clear();
   }
 
-  void _attachFile() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppLocalizations.of(context)!.fileTransferComingSoon)),
-    );
+  void _attachFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      if (file.path == null) return;
+
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.sendingFile(file.name))),
+      );
+
+      final sent = await _messageService.sendFile(
+        widget.device.id,
+        file.path!,
+        fileName: file.name,
+      );
+
+      if (!sent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.connectionFailed)),
+        );
+      }
+    } catch (e) {
+      debugPrint('[Chat] Error picking file: $e');
+    }
   }
 
   void _showOptions() {

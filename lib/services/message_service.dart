@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -100,6 +101,80 @@ class MessageService {
     return true;
   }
 
+  /// Send a file to a peer
+  Future<bool> sendFile(String peerId, String filePath, {
+    String? fileName,
+    String? mimeType,
+  }) async {
+    try {
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+      final name = fileName ?? filePath.split(Platform.pathSeparator).last;
+      final mime = mimeType ?? _guessMimeType(name);
+
+      final message = Message(
+        id: _uuid.v4(),
+        senderId: _deviceId,
+        receiverId: peerId,
+        content: name,
+        type: MessageType.file,
+        timestamp: DateTime.now(),
+        fileName: name,
+        fileSize: bytes.length,
+        mimeType: mime,
+        fileData: base64Encode(bytes),
+      );
+
+      final payload = jsonEncode({
+        'type': 'file',
+        'message': message.toJson(),
+      });
+
+      final sent = await _webRTCService.sendMessage(peerId, payload);
+      if (!sent) {
+        debugPrint('[Message] Failed to send file to $peerId');
+        return false;
+      }
+
+      _addMessage(message);
+      await _saveHistory();
+
+      debugPrint('[Message] File "$name" (${bytes.length} bytes) sent to $peerId');
+      return true;
+    } catch (e) {
+      debugPrint('[Message] Error sending file: $e');
+      return false;
+    }
+  }
+
+  String _guessMimeType(String fileName) {
+    final ext = fileName.toLowerCase().split('.').last;
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'bmp':
+        return 'image/bmp';
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+      case 'docx':
+        return 'application/msword';
+      case 'txt':
+        return 'text/plain';
+      case 'zip':
+        return 'application/zip';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
   /// Load message history from local storage
   Future<void> loadHistory() async {
     try {
@@ -145,7 +220,7 @@ class MessageService {
       final json = jsonDecode(data) as Map<String, dynamic>;
       final type = json['type'] as String?;
 
-      if (type == 'message' || type == 'clipboard') {
+      if (type == 'message' || type == 'clipboard' || type == 'file') {
         final messageJson = json['message'] as Map<String, dynamic>;
         final message = Message.fromJson(messageJson);
         _addMessage(message);

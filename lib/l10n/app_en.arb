@@ -29,6 +29,11 @@
   "@connecting": { "description": "Connecting status" },
   "connectionFailed": "Connection failed",
   "@connectionFailed": { "description": "Connection error" },
+  "sendingFile": "Sending {fileName}...",
+  "@sendingFile": {
+    "description": "Shown when sending a file",
+    "placeholders": { "fileName": { "type": "String" } }
+  },
   "noMessagesYet": "No messages yet",
   "@noMessagesYet": { "description": "Empty chat title" },
   "sendMessageHint": "Send a message to {deviceName}",

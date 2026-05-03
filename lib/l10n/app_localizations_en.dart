@@ -50,6 +50,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionFailed => 'Connection failed';
 
   @override
+  String sendingFile(String fileName) {
+    return 'Sending $fileName...';
+  }
+
+  @override
   String get noMessagesYet => 'No messages yet';
 
   @override

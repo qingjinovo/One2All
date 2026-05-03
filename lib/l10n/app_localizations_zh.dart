@@ -50,6 +50,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get connectionFailed => '连接失败';
 
   @override
+  String sendingFile(String fileName) {
+    return '正在发送 $fileName...';
+  }
+
+  @override
   String get noMessagesYet => '暂无消息';
 
   @override

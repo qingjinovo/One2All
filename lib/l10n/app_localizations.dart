@@ -176,6 +176,12 @@ abstract class AppLocalizations {
   /// **'Connection failed'**
   String get connectionFailed;
 
+  /// Shown when sending a file
+  ///
+  /// In en, this message translates to:
+  /// **'Sending {fileName}...'**
+  String sendingFile(String fileName);
+
   /// Empty chat title
   ///
   /// In en, this message translates to:
