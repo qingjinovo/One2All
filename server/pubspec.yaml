@@ -1,0 +1,12 @@
+name: one2all_server
+description: Signaling server for One2All cross-platform device interconnection.
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  shelf: ^1.4.0
+  shelf_web_socket: ^3.0.0
+  uuid: ^4.0.0
+  web_socket_channel: ^2.4.0

@@ -1,0 +1,301 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../l10n/app_localizations.dart';
+import '../models/device.dart';
+import '../models/message.dart';
+import '../services/message_service.dart';
+import '../services/webrtc_service.dart';
+import '../widgets/message_bubble.dart';
+
+class ChatScreen extends StatefulWidget {
+  final Device device;
+
+  const ChatScreen({super.key, required this.device});
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final List<Message> _messages = [];
+  bool _isConnected = false;
+
+  late final WebRTCService _webRTC;
+  late final MessageService _messageService;
+
+  @override
+  void initState() {
+    super.initState();
+    _webRTC = context.read<WebRTCService>();
+    _messageService = context.read<MessageService>();
+
+    _isConnected = _webRTC.isConnectedToPeer(widget.device.id);
+
+    _webRTC.addPeerConnectionChangedListener(_onPeerConnectionChanged);
+    _messageService.addNewMessageListener(_onNewMessage);
+
+    _loadMessages();
+  }
+
+  void _onPeerConnectionChanged(String peerId, bool connected) {
+    if (peerId == widget.device.id && mounted) {
+      setState(() => _isConnected = connected);
+    }
+  }
+
+  void _onNewMessage(Message message) {
+    if ((message.senderId == widget.device.id ||
+            message.receiverId == widget.device.id) &&
+        mounted) {
+      setState(() => _messages.add(message));
+      _scrollToBottom();
+    }
+  }
+
+  void _loadMessages() {
+    setState(() {
+      _messages.addAll(_messageService.getConversation(widget.device.id));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.device.name),
+            Text(
+              _isConnected ? AppLocalizations.of(context)!.connected : AppLocalizations.of(context)!.disconnected,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: _isConnected ? Colors.green : Colors.grey,
+                  ),
+            ),
+          ],
+        ),
+        actions: [
+          if (!_isConnected)
+            IconButton(
+              icon: const Icon(Icons.link),
+              onPressed: _connect,
+              tooltip: AppLocalizations.of(context)!.connect,
+            ),
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            onPressed: _showOptions,
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: _messages.isEmpty
+                ? _buildEmptyChat()
+                : _buildMessageList(),
+          ),
+          _buildMessageInput(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyChat() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.chat_bubble_outline,
+            size: 64,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            AppLocalizations.of(context)!.noMessagesYet,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            AppLocalizations.of(context)!.sendMessageHint(widget.device.name),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageList() {
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        final message = _messages[index];
+        final isMe = message.senderId != widget.device.id;
+        return MessageBubble(
+          message: message,
+          isMe: isMe,
+        );
+      },
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.attach_file),
+              onPressed: _isConnected ? _attachFile : null,
+            ),
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.of(context)!.typeAMessage,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                ),
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendMessage(),
+                enabled: _isConnected,
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.send),
+              onPressed: _isConnected ? _sendMessage : null,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _connect() {
+    _webRTC.connectToPeer(widget.device.id);
+  }
+
+  void _sendMessage() {
+    final content = _messageController.text.trim();
+    if (content.isEmpty) return;
+
+    _messageService.sendMessage(widget.device.id, content);
+    _messageController.clear();
+  }
+
+  void _attachFile() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context)!.fileTransferComingSoon)),
+    );
+  }
+
+  void _showOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: Text(AppLocalizations.of(context)!.deviceInfo),
+              onTap: () {
+                Navigator.pop(context);
+                _showDeviceInfo();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.sync),
+              title: Text(AppLocalizations.of(context)!.syncClipboard),
+              onTap: () {
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: Text(AppLocalizations.of(context)!.clearHistory),
+              onTap: () {
+                Navigator.pop(context);
+                _clearHistory();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeviceInfo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.device.name),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(AppLocalizations.of(context)!.deviceIdLabel(widget.device.id)),
+            Text(AppLocalizations.of(context)!.deviceTypeLabel(widget.device.type.name)),
+            Text(AppLocalizations.of(context)!.deviceStatusLabel(widget.device.status.name)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(AppLocalizations.of(context)!.close),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _clearHistory() {
+    _messageService.clearConversation(widget.device.id);
+    setState(() => _messages.clear());
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _webRTC.removePeerConnectionChangedListener(_onPeerConnectionChanged);
+    _messageService.removeNewMessageListener(_onNewMessage);
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+}
