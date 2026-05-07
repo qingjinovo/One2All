@@ -275,6 +275,27 @@ class MessageService {
     }
   }
 
+  /// Retry sending a failed file message
+  Future<bool> retryFile(String peerId, Message message) async {
+    if (message.status != MessageStatus.failed) return false;
+    if (message.filePath == null || !await File(message.filePath!).exists()) {
+      debugPrint('[Message] Cannot retry: file not found at ${message.filePath}');
+      return false;
+    }
+
+    // Reset message status to sending
+    _updateMessage(message.id, message.copyWith(status: MessageStatus.sending));
+    await _saveHistory();
+
+    // Re-send the file
+    return sendFile(
+      peerId,
+      message.filePath!,
+      fileName: message.fileName,
+      mimeType: message.mimeType,
+    );
+  }
+
   /// Save file bytes to disk using original filename, return the path
   Future<String> _saveFileToDisk(String messageId, List<int> bytes, {String? fileName}) async {
     if (_fileStoragePath == null) {
@@ -496,6 +517,21 @@ class MessageService {
       senderId: senderId,
       receiverId: receiverId,
     );
+
+    // Show file message immediately on receiver side
+    final message = Message(
+      id: messageId,
+      senderId: senderId,
+      receiverId: receiverId,
+      content: fileName,
+      type: MessageType.file,
+      timestamp: DateTime.now(),
+      fileName: fileName,
+      fileSize: fileSize,
+      mimeType: mimeType,
+      status: MessageStatus.sending,
+    );
+    _addMessage(message);
   }
 
   Future<void> _handleFileEnd(Map<String, dynamic> json) async {
@@ -512,20 +548,31 @@ class MessageService {
       final fileBytes = transfer.bytesBuilder.toBytes();
       final savedPath = await _saveFileToDisk(messageId, fileBytes, fileName: transfer.fileName);
 
-      final message = Message(
-        id: messageId,
-        senderId: transfer.senderId,
-        receiverId: transfer.receiverId,
-        content: transfer.fileName,
-        type: MessageType.file,
-        timestamp: DateTime.now(),
-        fileName: transfer.fileName,
-        fileSize: transfer.totalSize,
-        mimeType: transfer.mimeType,
-        filePath: savedPath,
-      );
-
-      _addMessage(message);
+      // Update existing message instead of creating new one
+      final index = _messages.indexWhere((m) => m.id == messageId);
+      if (index >= 0) {
+        final existing = _messages[index];
+        final updated = existing.copyWith(
+          filePath: savedPath,
+          status: MessageStatus.sent,
+        );
+        _updateMessage(messageId, updated);
+      } else {
+        // Fallback: create new message if somehow not found
+        final message = Message(
+          id: messageId,
+          senderId: transfer.senderId,
+          receiverId: transfer.receiverId,
+          content: transfer.fileName,
+          type: MessageType.file,
+          timestamp: DateTime.now(),
+          fileName: transfer.fileName,
+          fileSize: transfer.totalSize,
+          mimeType: transfer.mimeType,
+          filePath: savedPath,
+        );
+        _addMessage(message);
+      }
       await _saveHistory();
       debugPrint('[Message] File "${transfer.fileName}" received and saved');
     } catch (e) {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/device.dart';
@@ -306,6 +307,7 @@ class SignalingService {
           final devices = devicesJson
               .map((d) => Device.fromJson(d as Map<String, dynamic>))
               .toList();
+          _saveKnownDevices(devices);
           for (final listener in _onDeviceListListeners) {
             listener(devices);
           }
@@ -314,6 +316,7 @@ class SignalingService {
         case SignalType.deviceOnline:
           if (message.data != null) {
             final device = Device.fromJson(message.data!);
+            _saveKnownDevice(device);
             for (final listener in _onDeviceOnlineListeners) {
               listener(device);
             }
@@ -444,6 +447,43 @@ class SignalingService {
         );
       }
     });
+  }
+
+  /// Save known devices to SharedPreferences
+  Future<void> _saveKnownDevices(List<Device> devices) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(devices.map((d) => d.toJson()).toList());
+      await prefs.setString('known_devices', json);
+    } catch (e) {
+      debugPrint('[Signaling] Error saving known devices: $e');
+    }
+  }
+
+  /// Save a single known device (merge with existing)
+  Future<void> _saveKnownDevice(Device device) async {
+    try {
+      final devices = await loadKnownDevices();
+      devices.removeWhere((d) => d.id == device.id);
+      devices.add(device);
+      await _saveKnownDevices(devices);
+    } catch (e) {
+      debugPrint('[Signaling] Error saving known device: $e');
+    }
+  }
+
+  /// Load known devices from SharedPreferences
+  Future<List<Device>> loadKnownDevices() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString('known_devices');
+      if (json == null) return [];
+      final List<dynamic> list = jsonDecode(json) as List<dynamic>;
+      return list.map((d) => Device.fromJson(d as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('[Signaling] Error loading known devices: $e');
+      return [];
+    }
   }
 
   void dispose() {

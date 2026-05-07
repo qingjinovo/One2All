@@ -25,6 +25,8 @@ Future<void> main() async {
   final deviceId = prefs.getString('device_id') ?? _uuid.v4();
   final clipboardSync = prefs.getBool('clipboard_sync') ?? false;
   final languageCode = prefs.getString('language_code') ?? 'zh';
+  final themeModeIndex = prefs.getInt('theme_mode') ?? 0; // 0=system, 1=light, 2=dark
+  final themeMode = ThemeMode.values[themeModeIndex];
 
   // Save device ID if not set
   if (!prefs.containsKey('device_id')) {
@@ -62,7 +64,7 @@ Future<void> main() async {
         Provider.value(value: messageService),
         Provider.value(value: clipboardService),
       ],
-      child: One2AllApp(locale: Locale(languageCode)),
+      child: One2AllApp(locale: Locale(languageCode), themeMode: themeMode),
     ),
   );
 }
@@ -86,12 +88,18 @@ String _getDeviceType() {
 
 class One2AllApp extends StatefulWidget {
   final Locale locale;
+  final ThemeMode themeMode;
 
-  const One2AllApp({super.key, required this.locale});
+  const One2AllApp({super.key, required this.locale, required this.themeMode});
 
   static void setLocale(BuildContext context, Locale newLocale) {
     final state = context.findAncestorStateOfType<_One2AllAppState>();
     state?.setLocale(newLocale);
+  }
+
+  static void setThemeMode(BuildContext context, ThemeMode newThemeMode) {
+    final state = context.findAncestorStateOfType<_One2AllAppState>();
+    state?.setThemeMode(newThemeMode);
   }
 
   @override
@@ -100,15 +108,24 @@ class One2AllApp extends StatefulWidget {
 
 class _One2AllAppState extends State<One2AllApp> {
   late Locale _locale;
+  late ThemeMode _themeMode;
 
   @override
   void initState() {
     super.initState();
     _locale = widget.locale;
+    _themeMode = widget.themeMode;
   }
 
   void setLocale(Locale locale) {
     setState(() => _locale = locale);
+  }
+
+  void setThemeMode(ThemeMode themeMode) {
+    setState(() => _themeMode = themeMode);
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt('theme_mode', themeMode.index);
+    });
   }
 
   @override
@@ -129,7 +146,7 @@ class _One2AllAppState extends State<One2AllApp> {
         useMaterial3: true,
         brightness: Brightness.dark,
       ),
-      themeMode: ThemeMode.system,
+      themeMode: _themeMode,
       home: const HomeScreen(),
     );
   }

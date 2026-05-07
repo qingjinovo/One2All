@@ -595,6 +595,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open File Location'**
   String get openFileLocation;
+
+  /// Tooltip for theme toggle button
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle Theme'**
+  String get toggleTheme;
+
+  /// Button to retry failed file send
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retrySend;
 }
 
 class _AppLocalizationsDelegate

@@ -281,4 +281,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openFileLocation => 'Open File Location';
+
+  @override
+  String get toggleTheme => 'Toggle Theme';
+
+  @override
+  String get retrySend => 'Retry';
 }

@@ -1,7 +1,7 @@
 name: one2all
 description: Cross-platform device interconnection app for file, message, and data sharing.
 publish_to: 'none'
-version: 1.5.0+6
+version: 1.6.0+7
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

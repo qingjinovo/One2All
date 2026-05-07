@@ -18,6 +18,7 @@ class MessageBubble extends StatefulWidget {
   final double? transferSpeed; // bytes per second
   final int? bytesTransferred;
   final int? totalBytes;
+  final VoidCallback? onRetry;
 
   const MessageBubble({
     super.key,
@@ -27,6 +28,7 @@ class MessageBubble extends StatefulWidget {
     this.transferSpeed,
     this.bytesTransferred,
     this.totalBytes,
+    this.onRetry,
   });
 
   @override
@@ -310,6 +312,39 @@ class _MessageBubbleState extends State<MessageBubble> {
                       color: _getTextColor(context).withValues(alpha: 0.7),
                       fontSize: 11,
                     ),
+                  ),
+                ] else if (widget.isMe && widget.message.status == MessageStatus.failed) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildStatusIcon(context),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: widget.onRetry,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (widget.isMe ? Colors.white : Theme.of(context).colorScheme.primary).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.refresh, size: 14, color: widget.isMe ? Colors.white : Theme.of(context).colorScheme.primary),
+                              const SizedBox(width: 4),
+                              Text(
+                                AppLocalizations.of(context)!.retrySend,
+                                style: TextStyle(
+                                  color: widget.isMe ? Colors.white : Theme.of(context).colorScheme.primary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ] else if (widget.isMe) ...[
                   const SizedBox(height: 2),

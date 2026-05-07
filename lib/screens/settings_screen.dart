@@ -213,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               ListTile(
                 title: const Text('One2All'),
-                subtitle: Text(l10n.version('1.5.0')),
+                subtitle: Text(l10n.version('1.6.0')),
               ),
               ListTile(
                 title: Text(l10n.description),

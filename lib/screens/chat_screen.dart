@@ -194,6 +194,9 @@ class _ChatScreenState extends State<ChatScreen> {
           transferSpeed: state?.speed,
           bytesTransferred: state?.bytesTransferred,
           totalBytes: state?.totalBytes,
+          onRetry: message.status == MessageStatus.failed
+              ? () => _retryMessage(message)
+              : null,
         );
       },
     );
@@ -251,6 +254,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _connect() {
     _webRTC.connectToPeer(widget.device.id);
+  }
+
+  void _retryMessage(Message message) {
+    _messageService.retryFile(widget.device.id, message);
   }
 
   void _sendMessage() {

@@ -189,5 +189,9 @@
   "openFile": "Open File",
   "@openFile": { "description": "Context menu item to open file" },
   "openFileLocation": "Open File Location",
-  "@openFileLocation": { "description": "Context menu item to open file in explorer" }
+  "@openFileLocation": { "description": "Context menu item to open file in explorer" },
+  "toggleTheme": "Toggle Theme",
+  "@toggleTheme": { "description": "Tooltip for theme toggle button" },
+  "retrySend": "Retry",
+  "@retrySend": { "description": "Button to retry failed file send" }
 }

@@ -82,5 +82,7 @@
   "changeLocation": "更改",
   "selectFolder": "选择文件夹",
   "openFile": "打开文件",
-  "openFileLocation": "打开文件所在位置"
+  "openFileLocation": "打开文件所在位置",
+  "toggleTheme": "切换主题",
+  "retrySend": "重试"
 }

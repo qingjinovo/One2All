@@ -276,4 +276,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get openFileLocation => '打开文件所在位置';
+
+  @override
+  String get toggleTheme => '切换主题';
+
+  @override
+  String get retrySend => '重试';
 }
