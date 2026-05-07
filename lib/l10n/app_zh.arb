@@ -80,5 +80,7 @@
   "fileStorageLocation": "文件存储位置",
   "fileStorageHelper": "接收的文件和图片保存路径",
   "changeLocation": "更改",
-  "selectFolder": "选择文件夹"
+  "selectFolder": "选择文件夹",
+  "openFile": "打开文件",
+  "openFileLocation": "打开文件所在位置"
 }

@@ -270,4 +270,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get selectFolder => '选择文件夹';
+
+  @override
+  String get openFile => '打开文件';
+
+  @override
+  String get openFileLocation => '打开文件所在位置';
 }

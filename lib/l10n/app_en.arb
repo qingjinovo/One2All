@@ -185,5 +185,9 @@
   "changeLocation": "Change",
   "@changeLocation": { "description": "Change location button" },
   "selectFolder": "Select Folder",
-  "@selectFolder": { "description": "Folder picker title" }
+  "@selectFolder": { "description": "Folder picker title" },
+  "openFile": "Open File",
+  "@openFile": { "description": "Context menu item to open file" },
+  "openFileLocation": "Open File Location",
+  "@openFileLocation": { "description": "Context menu item to open file in explorer" }
 }

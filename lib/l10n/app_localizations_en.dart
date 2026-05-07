@@ -275,4 +275,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get selectFolder => 'Select Folder';
+
+  @override
+  String get openFile => 'Open File';
+
+  @override
+  String get openFileLocation => 'Open File Location';
 }

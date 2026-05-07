@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -13,12 +15,18 @@ class MessageBubble extends StatefulWidget {
   final Message message;
   final bool isMe;
   final double? fileProgress;
+  final double? transferSpeed; // bytes per second
+  final int? bytesTransferred;
+  final int? totalBytes;
 
   const MessageBubble({
     super.key,
     required this.message,
     required this.isMe,
     this.fileProgress,
+    this.transferSpeed,
+    this.bytesTransferred,
+    this.totalBytes,
   });
 
   @override
@@ -244,68 +252,149 @@ class _MessageBubbleState extends State<MessageBubble> {
     final message = widget.message;
     final progress = widget.fileProgress;
     final isTransferring = message.status == MessageStatus.sending && progress != null;
+    final canOpen = message.filePath != null && !isTransferring;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          _getFileIcon(),
-          color: widget.isMe ? Colors.white70 : Theme.of(context).colorScheme.primary,
-          size: 32,
-        ),
-        const SizedBox(width: 12),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                message.fileName ?? message.content,
-                style: TextStyle(
-                  color: _getTextColor(context),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (message.fileSize != null)
+    return GestureDetector(
+      onTap: canOpen ? () => _openFile(context) : null,
+      onSecondaryTap: canOpen ? () => _showFileContextMenu(context) : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _getFileIcon(),
+            color: widget.isMe ? Colors.white70 : Theme.of(context).colorScheme.primary,
+            size: 32,
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  _formatFileSize(message.fileSize!),
+                  message.fileName ?? message.content,
                   style: TextStyle(
-                    color: _getTextColor(context).withValues(alpha: 0.7),
-                    fontSize: 12,
+                    color: _getTextColor(context),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    decoration: canOpen ? TextDecoration.underline : null,
+                    decorationColor: _getTextColor(context).withValues(alpha: 0.5),
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              if (isTransferring) ...[
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: (widget.isMe ? Colors.white : Colors.grey).withValues(alpha: 0.3),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      widget.isMe ? Colors.white : Theme.of(context).colorScheme.primary,
+                if (message.fileSize != null)
+                  Text(
+                    _formatFileSize(message.fileSize!),
+                    style: TextStyle(
+                      color: _getTextColor(context).withValues(alpha: 0.7),
+                      fontSize: 12,
                     ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${(progress * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(
-                    color: _getTextColor(context).withValues(alpha: 0.7),
-                    fontSize: 11,
+                if (isTransferring) ...[
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: (widget.isMe ? Colors.white : Colors.grey).withValues(alpha: 0.3),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        widget.isMe ? Colors.white : Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
                   ),
-                ),
-              ] else if (widget.isMe) ...[
-                const SizedBox(height: 2),
-                _buildStatusIcon(context),
+                  const SizedBox(height: 2),
+                  Text(
+                    _buildTransferInfo(progress),
+                    style: TextStyle(
+                      color: _getTextColor(context).withValues(alpha: 0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                ] else if (widget.isMe) ...[
+                  const SizedBox(height: 2),
+                  _buildStatusIcon(context),
+                ],
               ],
-            ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buildTransferInfo(double progress) {
+    final transferred = widget.bytesTransferred ?? 0;
+    final total = widget.totalBytes ?? 0;
+    final speed = widget.transferSpeed ?? 0;
+
+    final transferredStr = _formatFileSize(transferred);
+    final totalStr = _formatFileSize(total);
+    final speedStr = speed > 0 ? _formatSpeed(speed) : '...';
+
+    return '$transferredStr / $totalStr · $speedStr';
+  }
+
+  String _formatSpeed(double bytesPerSec) {
+    if (bytesPerSec < 1024) return '${bytesPerSec.toStringAsFixed(0)} B/s';
+    if (bytesPerSec < 1024 * 1024) return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+  }
+
+  void _openFile(BuildContext context) async {
+    final filePath = widget.message.filePath;
+    if (filePath == null) return;
+
+    final result = await OpenFilex.open(filePath);
+    if (result.type != ResultType.done && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cannot open file: ${result.message}')),
+      );
+    }
+  }
+
+  void _showFileContextMenu(BuildContext context) async {
+    final filePath = widget.message.filePath;
+    if (filePath == null) return;
+
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final offset = renderBox.localToGlobal(Offset.zero);
+
+    final value = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx + renderBox.size.width,
+        offset.dy,
+        offset.dx,
+        offset.dy + renderBox.size.height,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'open',
+          child: ListTile(
+            leading: const Icon(Icons.open_in_new),
+            title: Text(AppLocalizations.of(context)!.openFile),
+            dense: true,
           ),
         ),
+        if (Platform.isWindows)
+          PopupMenuItem(
+            value: 'open_location',
+            child: ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: Text(AppLocalizations.of(context)!.openFileLocation),
+              dense: true,
+            ),
+          ),
       ],
     );
+
+    if (!context.mounted) return;
+    if (value == 'open') {
+      _openFile(context);
+    } else if (value == 'open_location' && Platform.isWindows) {
+      Process.run('explorer.exe', ['/select,', filePath]);
+    }
   }
 
   void _showFullImage(BuildContext context, Uint8List bytes) {

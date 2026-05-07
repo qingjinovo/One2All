@@ -14,8 +14,8 @@ import 'webrtc_service.dart';
 /// Callback for new messages
 typedef OnNewMessageCallback = void Function(Message message);
 
-/// Callback for file transfer progress (0.0 to 1.0)
-typedef OnFileProgressCallback = void Function(String messageId, double progress);
+/// Callback for file transfer progress (0.0 to 1.0, bytesTransferred, totalBytes)
+typedef OnFileProgressCallback = void Function(String messageId, double progress, int bytesTransferred, int totalBytes);
 
 /// Manages message sending, receiving, and history
 class MessageService {
@@ -31,6 +31,9 @@ class MessageService {
 
   // Chunked file transfer state (incoming)
   final Map<String, _IncomingFileTransfer> _incomingFileTransfers = {};
+
+  // Transfer timing for speed calculation
+  final Map<String, DateTime> _transferStartTime = {};
 
   // Listener list (supports multiple listeners)
   final List<OnNewMessageCallback> _onNewMessageListeners = [];
@@ -179,6 +182,9 @@ class MessageService {
       );
       _addMessage(message);
 
+      // Record transfer start time for speed calculation
+      _transferStartTime[messageId] = DateTime.now();
+
       // Send file_start control message (metadata only, no file data)
       final startPayload = jsonEncode({
         'type': 'file_start',
@@ -222,9 +228,9 @@ class MessageService {
 
         offset = end;
         final progress = offset / totalSize;
-        if (onProgress != null) onProgress(messageId, progress);
+        if (onProgress != null) onProgress(messageId, progress, offset, totalSize);
         for (final listener in _onFileProgressListeners) {
-          listener(messageId, progress);
+          listener(messageId, progress, offset, totalSize);
         }
       }
 
@@ -235,6 +241,9 @@ class MessageService {
       });
       await _webRTCService.sendMessage(peerId, endPayload);
 
+      // Clean up transfer timing
+      _transferStartTime.remove(messageId);
+
       // Update message status to sent
       _updateMessage(messageId, message.copyWith(status: MessageStatus.sent));
       await _saveHistory();
@@ -243,6 +252,7 @@ class MessageService {
       return true;
     } catch (e) {
       debugPrint('[Message] Error sending file: $e');
+      _transferStartTime.remove(messageId);
       _updateMessage(messageId, Message(
         id: messageId,
         senderId: _deviceId,
@@ -440,7 +450,7 @@ class MessageService {
       // Notify progress
       final progress = transfer.receivedBytes / transfer.totalSize;
       for (final listener in _onFileProgressListeners) {
-        listener(messageId, progress);
+        listener(messageId, progress, transfer.receivedBytes, transfer.totalSize);
       }
     } catch (e) {
       debugPrint('[Message] Error processing binary chunk: $e');
@@ -457,6 +467,7 @@ class MessageService {
 
     debugPrint('[Message] File transfer started: $fileName ($fileSize bytes)');
 
+    _transferStartTime[messageId] = DateTime.now();
     _incomingFileTransfers[messageId] = _IncomingFileTransfer(
       messageId: messageId,
       fileName: fileName,
@@ -470,6 +481,7 @@ class MessageService {
   Future<void> _handleFileEnd(Map<String, dynamic> json) async {
     final messageId = json['messageId'] as String;
     final transfer = _incomingFileTransfers.remove(messageId);
+    _transferStartTime.remove(messageId);
 
     if (transfer == null) {
       debugPrint('[Message] file_end for unknown transfer: $messageId');

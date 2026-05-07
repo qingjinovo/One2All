@@ -22,7 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<Message> _messages = [];
-  final Map<String, double> _fileProgress = {};
+  final Map<String, _FileTransferState> _fileTransferState = {};
   bool _isConnected = false;
 
   late final WebRTCService _webRTC;
@@ -49,9 +49,34 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _onFileProgress(String messageId, double progress) {
+  void _onFileProgress(String messageId, double progress, int bytesTransferred, int totalBytes) {
     if (mounted) {
-      setState(() => _fileProgress[messageId] = progress);
+      setState(() {
+        final prev = _fileTransferState[messageId];
+        final now = DateTime.now();
+        // Calculate speed using a rolling window for smoother display
+        double speed = 0;
+        if (prev != null) {
+          final elapsed = now.difference(prev.lastUpdateTime).inMilliseconds / 1000.0;
+          if (elapsed > 0.1) {
+            final bytesDelta = bytesTransferred - prev.lastBytesTransferred;
+            speed = bytesDelta / elapsed;
+          } else {
+            speed = prev.speed;
+          }
+        } else {
+          // First chunk — not enough data for speed yet
+          speed = 0;
+        }
+        _fileTransferState[messageId] = _FileTransferState(
+          progress: progress,
+          bytesTransferred: bytesTransferred,
+          totalBytes: totalBytes,
+          speed: speed,
+          lastUpdateTime: now,
+          lastBytesTransferred: bytesTransferred,
+        );
+      });
     }
   }
 
@@ -155,10 +180,20 @@ class _ChatScreenState extends State<ChatScreen> {
       itemBuilder: (context, index) {
         final message = _messages[index];
         final isMe = message.senderId != widget.device.id;
+        final state = _fileTransferState[message.id];
+        // Clean up completed transfers
+        if (state != null && message.status == MessageStatus.sent) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _fileTransferState.remove(message.id));
+          });
+        }
         return MessageBubble(
           message: message,
           isMe: isMe,
-          fileProgress: _fileProgress[message.id],
+          fileProgress: state?.progress,
+          transferSpeed: state?.speed,
+          bytesTransferred: state?.bytesTransferred,
+          totalBytes: state?.totalBytes,
         );
       },
     );
@@ -344,4 +379,22 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.dispose();
     super.dispose();
   }
+}
+
+class _FileTransferState {
+  final double progress;
+  final int bytesTransferred;
+  final int totalBytes;
+  final double speed; // bytes per second
+  final DateTime lastUpdateTime;
+  final int lastBytesTransferred;
+
+  _FileTransferState({
+    required this.progress,
+    required this.bytesTransferred,
+    required this.totalBytes,
+    required this.speed,
+    required this.lastUpdateTime,
+    required this.lastBytesTransferred,
+  });
 }

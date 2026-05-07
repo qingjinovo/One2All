@@ -583,6 +583,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select Folder'**
   String get selectFolder;
+
+  /// Context menu item to open file
+  ///
+  /// In en, this message translates to:
+  /// **'Open File'**
+  String get openFile;
+
+  /// Context menu item to open file in explorer
+  ///
+  /// In en, this message translates to:
+  /// **'Open File Location'**
+  String get openFileLocation;
 }
 
 class _AppLocalizationsDelegate
