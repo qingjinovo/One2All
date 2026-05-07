@@ -151,6 +151,12 @@ class WebRTCService {
     }
   }
 
+  /// Get buffered amount for a peer's data channel
+  int getBufferedAmount(String peerId) {
+    final dc = _dataChannels[peerId];
+    return dc?.bufferedAmount ?? 0;
+  }
+
   /// Check if connected to a peer (data channel is open)
   bool isConnectedToPeer(String peerId) {
     final dc = _dataChannels[peerId];

@@ -24,6 +24,7 @@ class MessageService {
   static const _uuid = Uuid();
   static const String _historyKey = 'message_history';
   static const int _chunkSize = 64 * 1024; // 64KB per chunk
+  static const int _bufferHighWater = 1 * 1024 * 1024; // 1MB buffer threshold
 
   final List<Message> _messages = [];
   final Map<String, List<Message>> _conversationMessages = {};
@@ -164,7 +165,7 @@ class MessageService {
       final totalSize = fileBytes.length;
 
       // Save file to local disk for persistence
-      final savedPath = await _saveFileToDisk(messageId, fileBytes);
+      final savedPath = await _saveFileToDisk(messageId, fileBytes, fileName: name);
 
       // Create message with sending status
       final message = Message(
@@ -204,9 +205,14 @@ class MessageService {
         return false;
       }
 
-      // Send file in chunks
+      // Send file in chunks with backpressure
       int offset = 0;
       while (offset < totalSize) {
+        // Wait if buffer is too full to avoid overwhelming the connection
+        while (_webRTCService.getBufferedAmount(peerId) > _bufferHighWater) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+
         final end = (offset + _chunkSize < totalSize) ? offset + _chunkSize : totalSize;
         final chunk = Uint8List.sublistView(fileBytes, offset, end);
 
@@ -269,12 +275,20 @@ class MessageService {
     }
   }
 
-  /// Save file bytes to disk and return the path
-  Future<String> _saveFileToDisk(String messageId, List<int> bytes) async {
+  /// Save file bytes to disk using original filename, return the path
+  Future<String> _saveFileToDisk(String messageId, List<int> bytes, {String? fileName}) async {
     if (_fileStoragePath == null) {
       await _initFileStorage();
     }
-    final path = '$_fileStoragePath${Platform.pathSeparator}$messageId';
+    // Use original filename, avoid collisions by appending messageId prefix if needed
+    final baseName = fileName ?? messageId;
+    var path = '$_fileStoragePath${Platform.pathSeparator}$baseName';
+    if (await File(path).exists()) {
+      // File exists, prepend messageId prefix to avoid overwriting
+      final ext = baseName.contains('.') ? '.${baseName.split('.').last}' : '';
+      final nameWithoutExt = ext.isNotEmpty ? baseName.substring(0, baseName.length - ext.length) : baseName;
+      path = '$_fileStoragePath${Platform.pathSeparator}${messageId.substring(0, 8)}_$nameWithoutExt$ext';
+    }
     await File(path).writeAsBytes(bytes);
     return path;
   }
@@ -283,6 +297,12 @@ class MessageService {
   Future<Uint8List?> loadFileData(String messageId) async {
     try {
       if (_fileStoragePath == null) return null;
+      // Find file by scanning storage — the message's filePath is preferred
+      final storedPath = _messages.firstWhere((m) => m.id == messageId, orElse: () => Message(id: '', senderId: '', receiverId: '', content: '', type: MessageType.text, timestamp: DateTime(0))).filePath;
+      if (storedPath != null && await File(storedPath).exists()) {
+        return await File(storedPath).readAsBytes();
+      }
+      // Fallback: try messageId as filename (legacy)
       final path = '$_fileStoragePath${Platform.pathSeparator}$messageId';
       final file = File(path);
       if (await file.exists()) {
@@ -490,7 +510,7 @@ class MessageService {
 
     try {
       final fileBytes = transfer.bytesBuilder.toBytes();
-      final savedPath = await _saveFileToDisk(messageId, fileBytes);
+      final savedPath = await _saveFileToDisk(messageId, fileBytes, fileName: transfer.fileName);
 
       final message = Message(
         id: messageId,

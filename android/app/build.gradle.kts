@@ -25,10 +25,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk {
-            abiFilters.clear()
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
-        }
     }
 
     buildTypes {
@@ -47,4 +43,18 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// Override ABI filters AFTER Flutter plugin sets its defaults
+androidComponents {
+    onVariants { variant ->
+        variant.packaging.jniLibs.keepDebugSymbols.add("**/*.so")
+    }
+}
+
+afterEvaluate {
+    android.buildTypes.getByName("release") {
+        ndk.abiFilters.clear()
+        ndk.abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
+    }
 }
