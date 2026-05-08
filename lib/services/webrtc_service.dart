@@ -29,6 +29,21 @@ class WebRTCService {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
+      {
+        'urls': 'turn:openrelay.metered.ca:80',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:443',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
+      {
+        'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+      },
     ],
   };
 
@@ -84,7 +99,12 @@ class WebRTCService {
 
       // Set up ICE candidate handling
       pc.onIceCandidate = (candidate) {
-        debugPrint('[WebRTC] Sending ICE candidate to $peerId');
+        final type = candidate.candidate?.contains('typ relay') == true
+            ? 'relay'
+            : candidate.candidate?.contains('typ srflx') == true
+                ? 'srflx'
+                : 'host';
+        debugPrint('[WebRTC] Sending ICE candidate to $peerId (type: $type)');
         _signalingService.sendIceCandidate(
           receiverId: peerId,
           candidate: candidate.toMap(),
@@ -287,8 +307,14 @@ class WebRTCService {
           message.data?['candidate'] as Map<String, dynamic>?;
       if (candidateMap == null) return;
 
+      final candidateStr = candidateMap['candidate'] as String;
+      final type = candidateStr.contains('typ relay')
+          ? 'relay'
+          : candidateStr.contains('typ srflx')
+              ? 'srflx'
+              : 'host';
       final candidate = RTCIceCandidate(
-        candidateMap['candidate'] as String,
+        candidateStr,
         candidateMap['sdpMid'] as String?,
         candidateMap['sdpMLineIndex'] as int?,
       );
@@ -299,12 +325,12 @@ class WebRTCService {
         // Buffer the candidate until remote description is set
         _pendingCandidates.putIfAbsent(peerId, () => []);
         _pendingCandidates[peerId]!.add(candidate);
-        debugPrint('[WebRTC] Buffered ICE candidate from $peerId (no remote desc yet)');
+        debugPrint('[WebRTC] Buffered ICE candidate from $peerId (type: $type, no remote desc yet)');
         return;
       }
 
       await pc.addCandidate(candidate);
-      debugPrint('[WebRTC] Added ICE candidate from $peerId');
+      debugPrint('[WebRTC] Added ICE candidate from $peerId (type: $type)');
     } catch (e) {
       debugPrint('[WebRTC] Error handling ICE candidate from $peerId: $e');
     }
