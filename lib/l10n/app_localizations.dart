@@ -607,6 +607,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Retry'**
   String get retrySend;
+
+  /// Tooltip for refresh connection button
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh Connection'**
+  String get refreshConnection;
 }
 
 class _AppLocalizationsDelegate

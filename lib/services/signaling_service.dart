@@ -179,6 +179,21 @@ class SignalingService {
     }
   }
 
+  /// Force reconnect to the signaling server
+  void reconnect() {
+    if (_serverUrl == null || _deviceId == null) return;
+    debugPrint('[Signaling] Force reconnecting...');
+    _shouldReconnect = true;
+    _reconnectAttempts = 0;
+    disconnect();
+    connect(
+      serverUrl: _serverUrl!,
+      deviceId: _deviceId!,
+      deviceName: _deviceName ?? 'Unknown',
+      deviceType: _deviceType ?? 'desktop',
+    );
+  }
+
   /// Send a signal message
   void sendSignal(SignalMessage message) {
     _send(message);

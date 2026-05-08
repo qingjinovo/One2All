@@ -287,4 +287,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get retrySend => 'Retry';
+
+  @override
+  String get refreshConnection => 'Refresh Connection';
 }

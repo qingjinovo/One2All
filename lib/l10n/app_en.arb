@@ -193,5 +193,7 @@
   "toggleTheme": "Toggle Theme",
   "@toggleTheme": { "description": "Tooltip for theme toggle button" },
   "retrySend": "Retry",
-  "@retrySend": { "description": "Button to retry failed file send" }
+  "@retrySend": { "description": "Button to retry failed file send" },
+  "refreshConnection": "Refresh Connection",
+  "@refreshConnection": { "description": "Tooltip for refresh connection button" }
 }

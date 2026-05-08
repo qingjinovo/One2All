@@ -29,12 +29,7 @@ class WebRTCService {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
-      {'urls': 'stun:stun.miwifi.com:3478'},
-      {'urls': 'stun:stun.chat.bilibili.com:3478'},
     ],
-    'iceTransportPolicy': 'all',
-    'bundlePolicy': 'max-bundle',
-    'rtcpMuxPolicy': 'require',
   };
 
   static const Map<String, dynamic> _dcConstraints = {
@@ -75,8 +70,10 @@ class WebRTCService {
     }
 
     try {
+      debugPrint('[WebRTC] Creating peer connection to $peerId...');
       final pc = await createPeerConnection(_iceServers, _dcConstraints);
       _peerConnections[peerId] = pc;
+      debugPrint('[WebRTC] Peer connection created for $peerId');
 
       // Create data channel
       final dc = await pc.createDataChannel(
@@ -87,6 +84,7 @@ class WebRTCService {
 
       // Set up ICE candidate handling
       pc.onIceCandidate = (candidate) {
+        debugPrint('[WebRTC] Sending ICE candidate to $peerId');
         _signalingService.sendIceCandidate(
           receiverId: peerId,
           candidate: candidate.toMap(),
@@ -194,12 +192,16 @@ class WebRTCService {
 
   Future<void> _handleOffer(String peerId, SignalMessage message) async {
     try {
+      debugPrint('[WebRTC] Received offer from $peerId');
       // Create peer connection if not exists
       if (!_peerConnections.containsKey(peerId)) {
+        debugPrint('[WebRTC] Creating peer connection for offer from $peerId...');
         final pc = await createPeerConnection(_iceServers, _dcConstraints);
         _peerConnections[peerId] = pc;
+        debugPrint('[WebRTC] Peer connection created for $peerId');
 
         pc.onIceCandidate = (candidate) {
+          debugPrint('[WebRTC] Sending ICE candidate to $peerId');
           _signalingService.sendIceCandidate(
             receiverId: peerId,
             candidate: candidate.toMap(),
@@ -234,8 +236,10 @@ class WebRTCService {
       // Flush any ICE candidates that arrived before remote description
       await _flushPendingCandidates(peerId);
 
+      debugPrint('[WebRTC] Creating answer for $peerId...');
       final answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      debugPrint('[WebRTC] Answer created and local description set for $peerId');
 
       _signalingService.sendAnswer(
         receiverId: peerId,

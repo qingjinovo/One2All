@@ -282,4 +282,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get retrySend => '重试';
+
+  @override
+  String get refreshConnection => '刷新连接';
 }

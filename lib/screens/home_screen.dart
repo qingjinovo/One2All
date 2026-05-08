@@ -21,14 +21,20 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   final List<Device> _devices = [];
   bool _isConnected = false;
+  bool _isRefreshing = false;
   String _deviceId = '';
+  late AnimationController _refreshAnimController;
 
   @override
   void initState() {
     super.initState();
+    _refreshAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
     _loadDeviceId();
     _loadKnownDevices();
     _setupCallbacks();
@@ -65,7 +71,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onConnectionChanged(bool connected) {
-    if (mounted) setState(() => _isConnected = connected);
+    if (mounted) {
+      setState(() {
+        _isConnected = connected;
+        if (connected) {
+          _isRefreshing = false;
+          _refreshAnimController.stop();
+          _refreshAnimController.reset();
+        }
+      });
+    }
   }
 
   void _onDeviceList(List<Device> devices) {
@@ -149,6 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _refreshAnimController.dispose();
     final signaling = context.read<SignalingService>();
     final webRTC = context.read<WebRTCService>();
 
@@ -182,6 +198,16 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.add),
             onPressed: () => _navigateToPairing(),
             tooltip: AppLocalizations.of(context)!.pairDevice,
+          ),
+          IconButton(
+            icon: _isRefreshing
+                ? RotationTransition(
+                    turns: _refreshAnimController,
+                    child: const Icon(Icons.refresh),
+                  )
+                : const Icon(Icons.refresh),
+            onPressed: _isRefreshing ? null : _refreshConnection,
+            tooltip: AppLocalizations.of(context)!.refreshConnection,
           ),
           IconButton(
             icon: const Icon(Icons.settings),
@@ -252,6 +278,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final brightness = Theme.of(context).brightness;
     final newMode = brightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark;
     One2AllApp.setThemeMode(context, newMode);
+  }
+
+  void _refreshConnection() {
+    setState(() {
+      _isRefreshing = true;
+    });
+    _refreshAnimController.repeat();
+    final signaling = context.read<SignalingService>();
+    signaling.reconnect();
+    // Auto-stop animation after 10 seconds if not connected
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && _isRefreshing) {
+        setState(() {
+          _isRefreshing = false;
+        });
+        _refreshAnimController.stop();
+        _refreshAnimController.reset();
+      }
+    });
   }
 
   void _navigateToPairing() {
