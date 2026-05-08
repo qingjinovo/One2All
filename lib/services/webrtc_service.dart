@@ -17,6 +17,7 @@ class WebRTCService {
   final SignalingService _signalingService;
   final Map<String, RTCPeerConnection> _peerConnections = {};
   final Map<String, RTCDataChannel> _dataChannels = {};
+  final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
 
   // Listener lists (supports multiple listeners)
   final List<OnDataChannelCallback> _onDataChannelOpenListeners = [];
@@ -28,7 +29,12 @@ class WebRTCService {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
-    ]
+      {'urls': 'stun:stun.miwifi.com:3478'},
+      {'urls': 'stun:stun.chat.bilibili.com:3478'},
+    ],
+    'iceTransportPolicy': 'all',
+    'bundlePolicy': 'max-bundle',
+    'rtcpMuxPolicy': 'require',
   };
 
   static const Map<String, dynamic> _dcConstraints = {
@@ -225,6 +231,9 @@ class WebRTCService {
         RTCSessionDescription(sdp['sdp'] as String, sdp['type'] as String),
       );
 
+      // Flush any ICE candidates that arrived before remote description
+      await _flushPendingCandidates(peerId);
+
       final answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -251,6 +260,9 @@ class WebRTCService {
         RTCSessionDescription(sdp['sdp'] as String, sdp['type'] as String),
       );
 
+      // Flush any ICE candidates that arrived before remote description
+      await _flushPendingCandidates(peerId);
+
       debugPrint('[WebRTC] Set remote description from $peerId');
     } catch (e) {
       debugPrint('[WebRTC] Error handling answer from $peerId: $e');
@@ -261,7 +273,11 @@ class WebRTCService {
       String peerId, SignalMessage message) async {
     try {
       final pc = _peerConnections[peerId];
-      if (pc == null) return;
+      if (pc == null) {
+        debugPrint('[WebRTC] No peer connection for $peerId, buffering ICE candidate');
+        _pendingCandidates.putIfAbsent(peerId, () => []);
+        return;
+      }
 
       final candidateMap =
           message.data?['candidate'] as Map<String, dynamic>?;
@@ -273,10 +289,38 @@ class WebRTCService {
         candidateMap['sdpMLineIndex'] as int?,
       );
 
+      // Check if remote description is set
+      final remoteDesc = await pc.getRemoteDescription();
+      if (remoteDesc == null) {
+        // Buffer the candidate until remote description is set
+        _pendingCandidates.putIfAbsent(peerId, () => []);
+        _pendingCandidates[peerId]!.add(candidate);
+        debugPrint('[WebRTC] Buffered ICE candidate from $peerId (no remote desc yet)');
+        return;
+      }
+
       await pc.addCandidate(candidate);
       debugPrint('[WebRTC] Added ICE candidate from $peerId');
     } catch (e) {
       debugPrint('[WebRTC] Error handling ICE candidate from $peerId: $e');
+    }
+  }
+
+  /// Flush buffered ICE candidates after remote description is set
+  Future<void> _flushPendingCandidates(String peerId) async {
+    final candidates = _pendingCandidates.remove(peerId);
+    if (candidates == null || candidates.isEmpty) return;
+
+    final pc = _peerConnections[peerId];
+    if (pc == null) return;
+
+    debugPrint('[WebRTC] Flushing ${candidates.length} buffered ICE candidates for $peerId');
+    for (final candidate in candidates) {
+      try {
+        await pc.addCandidate(candidate);
+      } catch (e) {
+        debugPrint('[WebRTC] Error adding buffered candidate for $peerId: $e');
+      }
     }
   }
 
@@ -320,6 +364,8 @@ class WebRTCService {
     final pc = _peerConnections.remove(peerId);
     await pc?.close();
 
+    _pendingCandidates.remove(peerId);
+
     for (final listener in _onPeerConnectionChangedListeners) {
       listener(peerId, false);
     }
@@ -332,6 +378,7 @@ class WebRTCService {
     }
     _peerConnections.clear();
     _dataChannels.clear();
+    _pendingCandidates.clear();
     _onBinaryMessageReceivedListeners.clear();
     _signalingService.removeSignalListener(_handleSignal);
   }
