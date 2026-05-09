@@ -138,6 +138,13 @@ class SignalingServer {
             case 'pairResponse':
               _handlePairResponse(deviceId, message);
               break;
+            case 'relayMessage':
+            case 'relayFileStart':
+            case 'relayFileChunk':
+            case 'relayFileEnd':
+            case 'relayClipboard':
+              _forwardToReceiver(deviceId, message);
+              break;
             default:
               _sendError(channel, 'Unknown message type: $type');
           }

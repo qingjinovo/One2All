@@ -36,7 +36,7 @@ Future<void> main() async {
   // Initialize services
   final signalingService = SignalingService();
   final webRTCService = WebRTCService(signalingService);
-  final messageService = MessageService(webRTCService, deviceId);
+  final messageService = MessageService(webRTCService, signalingService, deviceId);
   final clipboardService = ClipboardService(messageService, deviceId);
 
   // Load custom storage path and message history

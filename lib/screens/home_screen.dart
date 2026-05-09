@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/app_localizations.dart';
 import '../main.dart';
 import '../models/device.dart';
+import '../services/message_service.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
 
@@ -61,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _setupCallbacks() {
     final signaling = context.read<SignalingService>();
     final webRTC = context.read<WebRTCService>();
+    final messageService = context.read<MessageService>();
 
     signaling.addConnectionChangedListener(_onConnectionChanged);
     signaling.addDeviceListListener(_onDeviceList);
@@ -68,6 +70,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     signaling.addDeviceOfflineListener(_onDeviceOffline);
     signaling.addPairAcceptedListener(_onPairAccepted);
     webRTC.addPeerConnectionChangedListener(_onPeerConnectionChanged);
+    messageService.addConnectionMethodListener(_onConnectionMethodChanged);
+  }
+
+  void _onConnectionMethodChanged(String peerId, ConnectionMethod method) {
+    if (mounted) {
+      setState(() {
+        final index = _devices.indexWhere((d) => d.id == peerId);
+        if (index >= 0) {
+          _devices[index] = _devices[index].copyWith(
+            connectionMethod: method,
+            status: method == ConnectionMethod.disconnected
+                ? DeviceStatus.offline
+                : DeviceStatus.online,
+          );
+        }
+      });
+    }
   }
 
   void _onConnectionChanged(bool connected) {
@@ -121,8 +140,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       setState(() {
         final index = _devices.indexWhere((d) => d.id == peerId);
         if (index >= 0) {
+          final messageService = context.read<MessageService>();
           _devices[index] = _devices[index].copyWith(
             status: connected ? DeviceStatus.online : DeviceStatus.offline,
+            connectionMethod: messageService.getConnectionMethod(peerId),
           );
         }
       });
@@ -167,6 +188,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _refreshAnimController.dispose();
     final signaling = context.read<SignalingService>();
     final webRTC = context.read<WebRTCService>();
+    final messageService = context.read<MessageService>();
 
     signaling.removeConnectionChangedListener(_onConnectionChanged);
     signaling.removeDeviceListListener(_onDeviceList);
@@ -174,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     signaling.removeDeviceOfflineListener(_onDeviceOffline);
     signaling.removePairAcceptedListener(_onPairAccepted);
     webRTC.removePeerConnectionChangedListener(_onPeerConnectionChanged);
+    messageService.removeConnectionMethodListener(_onConnectionMethodChanged);
 
     super.dispose();
   }
@@ -324,6 +347,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _connectToDevice(Device device) {
     final webRTC = context.read<WebRTCService>();
+    final signaling = context.read<SignalingService>();
 
     // Set connecting state
     setState(() {
@@ -339,15 +363,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     webRTC.connectToPeer(device.id).then((success) {
       if (!success && mounted) {
-        setState(() {
-          final index = _devices.indexWhere((d) => d.id == device.id);
-          if (index >= 0) {
-            _devices[index] = _devices[index].copyWith(status: DeviceStatus.offline);
-          }
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context)!.connectionFailed)),
-        );
+        // P2P failed, try relay fallback
+        if (signaling.isConnected) {
+          debugPrint('[Home] P2P failed for ${device.id}, using relay');
+          setState(() {
+            final index = _devices.indexWhere((d) => d.id == device.id);
+            if (index >= 0) {
+              _devices[index] = _devices[index].copyWith(
+                status: DeviceStatus.online,
+                connectionMethod: ConnectionMethod.relay,
+              );
+            }
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context)!.connectionRelay)),
+          );
+        } else {
+          setState(() {
+            final index = _devices.indexWhere((d) => d.id == device.id);
+            if (index >= 0) {
+              _devices[index] = _devices[index].copyWith(status: DeviceStatus.offline);
+            }
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context)!.connectionFailed)),
+          );
+        }
       }
     });
   }

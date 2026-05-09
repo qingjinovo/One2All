@@ -285,4 +285,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get refreshConnection => '刷新连接';
+
+  @override
+  String get connectionP2P => '直连';
+
+  @override
+  String get connectionRelay => '中继';
 }

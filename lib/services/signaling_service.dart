@@ -17,6 +17,7 @@ typedef OnPairResponseCallback = void Function(String senderId, bool accepted);
 typedef OnConnectionCallback = void Function(bool connected);
 typedef OnPairCodeCallback = void Function(String pairCode);
 typedef OnPairAcceptedCallback = void Function(String peerId);
+typedef OnRelayCallback = void Function(String senderId, String type, Map<String, dynamic> data);
 
 /// Manages WebSocket connection to the signaling server
 class SignalingService {
@@ -45,6 +46,7 @@ class SignalingService {
   final List<OnConnectionCallback> _onConnectionChangedListeners = [];
   final List<OnPairCodeCallback> _onPairCodeAssignedListeners = [];
   final List<OnPairAcceptedCallback> _onPairAcceptedListeners = [];
+  final List<OnRelayCallback> _onRelayListeners = [];
 
   String? _deviceId;
   String? _serverUrl;
@@ -105,6 +107,11 @@ class SignalingService {
       _onPairAcceptedListeners.add(callback);
   void removePairAcceptedListener(OnPairAcceptedCallback callback) =>
       _onPairAcceptedListeners.remove(callback);
+
+  void addRelayListener(OnRelayCallback callback) =>
+      _onRelayListeners.add(callback);
+  void removeRelayListener(OnRelayCallback callback) =>
+      _onRelayListeners.remove(callback);
 
   /// Notify listeners that a pairing was accepted (called by PairingScreen)
   void notifyPairAccepted(String peerId) {
@@ -274,6 +281,76 @@ class SignalingService {
     ));
   }
 
+  /// Send a relay message through the signaling server
+  void sendRelayMessage({
+    required String receiverId,
+    required Map<String, dynamic> data,
+  }) {
+    if (_deviceId == null) return;
+    _send(SignalMessage(
+      type: SignalType.relayMessage,
+      senderId: _deviceId,
+      receiverId: receiverId,
+      data: data,
+    ));
+  }
+
+  /// Send a relay file start message
+  void sendRelayFileStart({
+    required String receiverId,
+    required Map<String, dynamic> data,
+  }) {
+    if (_deviceId == null) return;
+    _send(SignalMessage(
+      type: SignalType.relayFileStart,
+      senderId: _deviceId,
+      receiverId: receiverId,
+      data: data,
+    ));
+  }
+
+  /// Send a relay file chunk
+  void sendRelayFileChunk({
+    required String receiverId,
+    required Map<String, dynamic> data,
+  }) {
+    if (_deviceId == null) return;
+    _send(SignalMessage(
+      type: SignalType.relayFileChunk,
+      senderId: _deviceId,
+      receiverId: receiverId,
+      data: data,
+    ));
+  }
+
+  /// Send a relay file end message
+  void sendRelayFileEnd({
+    required String receiverId,
+    required Map<String, dynamic> data,
+  }) {
+    if (_deviceId == null) return;
+    _send(SignalMessage(
+      type: SignalType.relayFileEnd,
+      senderId: _deviceId,
+      receiverId: receiverId,
+      data: data,
+    ));
+  }
+
+  /// Send a relay clipboard message
+  void sendRelayClipboard({
+    required String receiverId,
+    required Map<String, dynamic> data,
+  }) {
+    if (_deviceId == null) return;
+    _send(SignalMessage(
+      type: SignalType.relayClipboard,
+      senderId: _deviceId,
+      receiverId: receiverId,
+      data: data,
+    ));
+  }
+
   void _send(SignalMessage message) {
     try {
       _channel?.sink.add(message.toJsonString());
@@ -377,6 +454,19 @@ class SignalingService {
 
         case SignalType.pong:
           _lastPongTime = DateTime.now();
+          break;
+
+        case SignalType.relayMessage:
+        case SignalType.relayFileStart:
+        case SignalType.relayFileChunk:
+        case SignalType.relayFileEnd:
+        case SignalType.relayClipboard:
+          final senderId = message.senderId;
+          if (senderId != null && message.data != null) {
+            for (final listener in _onRelayListeners) {
+              listener(senderId, message.type.name, message.data!);
+            }
+          }
           break;
 
         default:

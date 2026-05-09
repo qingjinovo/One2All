@@ -24,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Message> _messages = [];
   final Map<String, _FileTransferState> _fileTransferState = {};
   bool _isConnected = false;
+  ConnectionMethod _connectionMethod = ConnectionMethod.disconnected;
 
   late final WebRTCService _webRTC;
   late final MessageService _messageService;
@@ -35,17 +36,31 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageService = context.read<MessageService>();
 
     _isConnected = _webRTC.isConnectedToPeer(widget.device.id);
+    _connectionMethod = _messageService.getConnectionMethod(widget.device.id);
 
     _webRTC.addPeerConnectionChangedListener(_onPeerConnectionChanged);
     _messageService.addNewMessageListener(_onNewMessage);
     _messageService.addFileProgressListener(_onFileProgress);
+    _messageService.addConnectionMethodListener(_onConnectionMethodChanged);
 
     _loadMessages();
   }
 
   void _onPeerConnectionChanged(String peerId, bool connected) {
     if (peerId == widget.device.id && mounted) {
-      setState(() => _isConnected = connected);
+      setState(() {
+        _isConnected = connected;
+        _connectionMethod = _messageService.getConnectionMethod(widget.device.id);
+      });
+    }
+  }
+
+  void _onConnectionMethodChanged(String peerId, ConnectionMethod method) {
+    if (peerId == widget.device.id && mounted) {
+      setState(() {
+        _connectionMethod = method;
+        _isConnected = method != ConnectionMethod.disconnected;
+      });
     }
   }
 
@@ -112,9 +127,9 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Text(widget.device.name),
             Text(
-              _isConnected ? AppLocalizations.of(context)!.connected : AppLocalizations.of(context)!.disconnected,
+              _getConnectionLabel(AppLocalizations.of(context)!),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: _isConnected ? Colors.green : Colors.grey,
+                    color: _getConnectionColor(),
                   ),
             ),
           ],
@@ -256,6 +271,28 @@ class _ChatScreenState extends State<ChatScreen> {
     _webRTC.connectToPeer(widget.device.id);
   }
 
+  String _getConnectionLabel(AppLocalizations l10n) {
+    switch (_connectionMethod) {
+      case ConnectionMethod.p2p:
+        return l10n.connectionP2P;
+      case ConnectionMethod.relay:
+        return l10n.connectionRelay;
+      case ConnectionMethod.disconnected:
+        return l10n.disconnected;
+    }
+  }
+
+  Color _getConnectionColor() {
+    switch (_connectionMethod) {
+      case ConnectionMethod.p2p:
+        return Colors.green;
+      case ConnectionMethod.relay:
+        return Colors.blue;
+      case ConnectionMethod.disconnected:
+        return Colors.grey;
+    }
+  }
+
   void _retryMessage(Message message) {
     _messageService.retryFile(widget.device.id, message);
   }
@@ -382,6 +419,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _webRTC.removePeerConnectionChangedListener(_onPeerConnectionChanged);
     _messageService.removeNewMessageListener(_onNewMessage);
     _messageService.removeFileProgressListener(_onFileProgress);
+    _messageService.removeConnectionMethodListener(_onConnectionMethodChanged);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();

@@ -195,5 +195,9 @@
   "retrySend": "Retry",
   "@retrySend": { "description": "Button to retry failed file send" },
   "refreshConnection": "Refresh Connection",
-  "@refreshConnection": { "description": "Tooltip for refresh connection button" }
+  "@refreshConnection": { "description": "Tooltip for refresh connection button" },
+  "connectionP2P": "Direct",
+  "@connectionP2P": { "description": "P2P connection method label" },
+  "connectionRelay": "Relay",
+  "@connectionRelay": { "description": "Relay connection method label" }
 }

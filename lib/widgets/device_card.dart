@@ -102,11 +102,19 @@ class DeviceCard extends StatelessWidget {
   Widget _buildStatusChip(BuildContext context, AppLocalizations l10n) {
     Color color;
     String label;
+    IconData? icon;
 
     switch (device.status) {
       case DeviceStatus.online:
-        color = Colors.green;
-        label = l10n.online;
+        if (device.connectionMethod == ConnectionMethod.relay) {
+          color = Colors.blue;
+          label = l10n.connectionRelay;
+          icon = Icons.cloud;
+        } else {
+          color = Colors.green;
+          label = l10n.connectionP2P;
+          icon = Icons.swap_horiz;
+        }
         break;
       case DeviceStatus.offline:
         color = Colors.grey;
@@ -128,14 +136,18 @@ class DeviceCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+          if (icon != null) ...[
+            Icon(icon, color: color, size: 14),
+          ] else ...[
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
+          ],
           const SizedBox(width: 6),
           Text(
             label,

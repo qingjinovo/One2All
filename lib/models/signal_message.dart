@@ -21,6 +21,13 @@ enum SignalType {
   // Ping/Pong
   ping,
   pong,
+
+  // Server relay (fallback when P2P fails)
+  relayMessage,
+  relayFileStart,
+  relayFileChunk,
+  relayFileEnd,
+  relayClipboard,
 }
 
 class SignalMessage {

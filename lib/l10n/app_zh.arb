@@ -85,5 +85,7 @@
   "openFileLocation": "打开文件所在位置",
   "toggleTheme": "切换主题",
   "retrySend": "重试",
-  "refreshConnection": "刷新连接"
+  "refreshConnection": "刷新连接",
+  "connectionP2P": "直连",
+  "connectionRelay": "中继"
 }

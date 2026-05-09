@@ -613,6 +613,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Refresh Connection'**
   String get refreshConnection;
+
+  /// P2P connection method label
+  ///
+  /// In en, this message translates to:
+  /// **'Direct'**
+  String get connectionP2P;
+
+  /// Relay connection method label
+  ///
+  /// In en, this message translates to:
+  /// **'Relay'**
+  String get connectionRelay;
 }
 
 class _AppLocalizationsDelegate

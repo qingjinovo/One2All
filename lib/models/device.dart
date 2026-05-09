@@ -4,11 +4,14 @@ enum DeviceType { phone, tablet, desktop, linux }
 
 enum DeviceStatus { online, offline, connecting }
 
+enum ConnectionMethod { p2p, relay, disconnected }
+
 class Device {
   final String id;
   final String name;
   final DeviceType type;
   final DeviceStatus status;
+  final ConnectionMethod connectionMethod;
   final DateTime lastSeen;
 
   Device({
@@ -16,6 +19,7 @@ class Device {
     required this.name,
     required this.type,
     this.status = DeviceStatus.offline,
+    this.connectionMethod = ConnectionMethod.disconnected,
     DateTime? lastSeen,
   }) : lastSeen = lastSeen ?? DateTime(0);
 
@@ -24,6 +28,7 @@ class Device {
     String? name,
     DeviceType? type,
     DeviceStatus? status,
+    ConnectionMethod? connectionMethod,
     DateTime? lastSeen,
   }) {
     return Device(
@@ -31,6 +36,7 @@ class Device {
       name: name ?? this.name,
       type: type ?? this.type,
       status: status ?? this.status,
+      connectionMethod: connectionMethod ?? this.connectionMethod,
       lastSeen: lastSeen ?? this.lastSeen,
     );
   }
@@ -40,6 +46,7 @@ class Device {
         'name': name,
         'type': type.name,
         'status': status.name,
+        'connectionMethod': connectionMethod.name,
         'lastSeen': lastSeen.toIso8601String(),
       };
 
@@ -48,6 +55,9 @@ class Device {
         name: json['name'] as String,
         type: DeviceType.values.byName(json['type'] as String),
         status: DeviceStatus.values.byName(json['status'] as String),
+        connectionMethod: json['connectionMethod'] != null
+            ? ConnectionMethod.values.byName(json['connectionMethod'] as String)
+            : ConnectionMethod.disconnected,
         lastSeen: json['lastSeen'] != null
             ? DateTime.parse(json['lastSeen'] as String)
             : DateTime.now(),

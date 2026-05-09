@@ -290,4 +290,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get refreshConnection => 'Refresh Connection';
+
+  @override
+  String get connectionP2P => 'Direct';
+
+  @override
+  String get connectionRelay => 'Relay';
 }
